@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>山东玻纤 (sh605006) 股价监控看板</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #f5f5f0;
+    color: #2c2c2a;
+    padding: 24px;
+    line-height: 1.6;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 0.5px solid #d3d1c7;
+  }
+  .header-left h1 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
+  .header-left .subtitle { font-size: 13px; color: #888780; }
+  .header-right { text-align: right; }
+  .price-now { font-size: 32px; font-weight: 500; color: #e24b4a; }
+  .price-change { font-size: 14px; color: #e24b4a; margin-top: 2px; }
+  .update-time { font-size: 12px; color: #888780; margin-top: 4px; }
+
+  /* Metric grid */
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .metric-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .metric-label { font-size: 12px; color: #888780; margin-bottom: 4px; }
+  .metric-value { font-size: 18px; font-weight: 500; }
+  .metric-sub { font-size: 11px; color: #888780; margin-top: 2px; }
+  .up { color: #e24b4a; }
+  .down { color: #639922; }
+  .neutral { color: #5f5e5a; }
+
+  /* Chart card */
+  .chart-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 0.5px solid #d3d1c7;
+  }
+  .chart-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .chart-title .tag {
+    font-size: 11px;
+    font-weight: 400;
+    color: #888780;
+    background: #f1efe8;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  #klineChart { width: 100%; height: 340px; }
+  #fundChart { width: 100%; height: 200px; }
+
+  /* Two column layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .info-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    border: 0.5px solid #d3d1c7;
+  }
+  .info-card h3 { font-size: 14px; font-weight: 500; margin-bottom: 12px; }
+
+  /* Tech indicator table */
+  .tech-table { width: 100%; font-size: 13px; }
+  .tech-table th {
+    text-align: left;
+    font-weight: 400;
+    color: #888780;
+    padding: 6px 0;
+    border-bottom: 0.5px solid #d3d1c7;
+  }
+  .tech-table td {
+    padding: 8px 0;
+    border-bottom: 0.5px solid #f1efe8;
+  }
+  .tech-table td:last-child { text-align: right; font-weight: 500; }
+  .signal-badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 400;
+  }
+  .signal-bull { background: #fcebeb; color: #a32d2d; }
+  .signal-bear { background: #eaf3de; color: #3b6d11; }
+  .signal-warn { background: #faeeda; color: #854f0b; }
+
+  /* Announcement list */
+  .announce-item {
+    padding: 8px 0;
+    border-bottom: 0.5px solid #f1efe8;
+    font-size: 13px;
+  }
+  .announce-item:last-child { border-bottom: none; }
+  .announce-date { color: #888780; font-size: 12px; }
+  .announce-title { color: #2c2c2a; margin-top: 2px; }
+
+  /* Fund flow table */
+  .fund-table { width: 100%; font-size: 13px; }
+  .fund-table th {
+    text-align: left;
+    font-weight: 400;
+    color: #888780;
+    padding: 6px 0;
+    border-bottom: 0.5px solid #d3d1c7;
+  }
+  .fund-table td {
+    padding: 8px 0;
+    border-bottom: 0.5px solid #f1efe8;
+  }
+  .fund-table td:last-child { text-align: right; font-weight: 500; }
+
+  .footer-note {
+    font-size: 12px;
+    color: #888780;
+    margin-top: 16px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>山东玻纤 sh605006</h1>
+      <div class="subtitle">建筑材料 / 玻璃纤维及其制品研发生产 | 总市值 101.83亿</div>
+    </div>
+    <div class="header-right">
+      <div class="price-now">15.58</div>
+      <div class="price-change">+0.47 (+3.11%)</div>
+      <div class="update-time">2026-08-17 收盘</div>
+    </div>
+  </div>
+
+  <!-- Key Metrics -->
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="metric-label">今日开盘</div>
+      <div class="metric-value neutral">15.15</div>
+      <div class="metric-sub">最高 16.60 / 最低 15.15</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">成交量 / 成交额</div>
+      <div class="metric-value neutral">46.44万手</div>
+      <div class="metric-sub">7.30亿元</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">换手率 / 量比</div>
+      <div class="metric-value neutral">7.10% / 1.95</div>
+      <div class="metric-sub">振幅 9.60%</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">PB / 市盈率</div>
+      <div class="metric-value neutral">3.39 / 亏损</div>
+      <div class="metric-sub">52周高 26.38 / 低 6.83</div>
+    </div>
+  </div>
+
+  <!-- Period Changes -->
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="metric-label">5日涨跌</div>
+      <div class="metric-value up">+5.34%</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">10日涨跌</div>
+      <div class="metric-value up">+28.34%</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">20日涨跌</div>
+      <div class="metric-value up">+26.46%</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">年初至今</div>
+      <div class="metric-value down">-1.02%</div>
+    </div>
+  </div>
+
+  <!-- K-line Chart -->
+  <div class="chart-card">
+    <div class="chart-title">
+      <span>近30日日K线走势</span>
+      <span class="tag">2026-07-07 ~ 2026-08-17</span>
+    </div>
+    <div id="klineChart" role="img" aria-label="山东玻纤近30日K线走势图"></div>
+  </div>
+
+  <div class="two-col">
+    <!-- Technical Indicators -->
+    <div class="info-card">
+      <h3>技术指标信号</h3>
+      <table class="tech-table">
+        <thead>
+          <tr><th>指标</th><th>数值</th><th>信号</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>MACD DIF</td>
+            <td>-0.294</td>
+            <td><span class="signal-badge signal-bull">金叉</span></td>
+          </tr>
+          <tr>
+            <td>MACD DEA</td>
+            <td>-0.727</td>
+            <td><span class="signal-badge signal-bull">柱线翻红</span></td>
+          </tr>
+          <tr>
+            <td>MACD 柱</td>
+            <td>+0.866</td>
+            <td><span class="signal-badge signal-bull">多头动能</span></td>
+          </tr>
+          <tr>
+            <td>KDJ K</td>
+            <td>80.76</td>
+            <td><span class="signal-badge signal-warn">超买区</span></td>
+          </tr>
+          <tr>
+            <td>KDJ D</td>
+            <td>79.59</td>
+            <td><span class="signal-badge signal-warn">超买区</span></td>
+          </tr>
+          <tr>
+            <td>KDJ J</td>
+            <td>83.10</td>
+            <td><span class="signal-badge signal-warn">高位</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Fund Flow -->
+    <div class="info-card">
+      <h3>资金流向 (2026-08-17)</h3>
+      <table class="fund-table">
+        <thead>
+          <tr><th>类别</th><th>净额</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>主力净流入</td>
+            <td class="up">+3017万</td>
+          </tr>
+          <tr>
+            <td>超大单净流入</td>
+            <td class="up">+2606万</td>
+          </tr>
+          <tr>
+            <td>大单净流入</td>
+            <td class="up">+411万</td>
+          </tr>
+          <tr>
+            <td>中单净流入</td>
+            <td class="up">+4762万</td>
+          </tr>
+          <tr>
+            <td>小单净流出</td>
+            <td class="down">-7779万</td>
+          </tr>
+          <tr>
+            <td>5日主力净流</td>
+            <td class="down">-8594万</td>
+          </tr>
+          <tr>
+            <td>20日主力净流</td>
+            <td class="up">+5999万</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recent Announcements -->
+  <div class="info-card" style="margin-bottom: 20px;">
+    <h3>近期公告</h3>
+    <div class="announce-item">
+      <div class="announce-date">2026-07-31</div>
+      <div class="announce-title">持股5%以上股东减持股份结果公告</div>
+    </div>
+    <div class="announce-item">
+      <div class="announce-date">2026-07-14</div>
+      <div class="announce-title">2026年半年度业绩预增公告</div>
+    </div>
+    <div class="announce-item">
+      <div class="announce-date">2026-07-07</div>
+      <div class="announce-title">"山玻转债"赎回结果暨股份变动的公告</div>
+    </div>
+    <div class="announce-item">
+      <div class="announce-date">2026-07-05</div>
+      <div class="announce-title">"山玻转债"赎回暨摘牌的最后一次提示性公告</div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    数据来源：腾讯自选股 | 更新时间：2026-08-17 | 本看板仅供参考，不构成投资建议
+  </div>
+
+</div>
+
+<script>
+  const klineData = [
+    { date: '07-07', open: 17.08, close: 16.96, high: 17.88, low: 16.75, vol: 393397 },
+    { date: '07-08', open: 16.99, close: 16.01, high: 17.45, low: 16.00, vol: 364352 },
+    { date: '07-09', open: 16.33, close: 17.52, high: 17.61, low: 16.22, vol: 678445 },
+    { date: '07-10', open: 17.95, close: 16.75, high: 18.27, low: 16.72, vol: 588235 },
+    { date: '07-13', open: 16.33, close: 15.33, high: 16.65, low: 15.33, vol: 389570 },
+    { date: '07-14', open: 15.60, close: 16.54, high: 16.86, low: 15.25, vol: 500439 },
+    { date: '07-15', open: 16.81, close: 15.85, high: 17.17, low: 15.85, vol: 395671 },
+    { date: '07-16', open: 15.30, close: 14.84, high: 15.80, low: 14.75, vol: 298033 },
+    { date: '07-17', open: 14.84, close: 13.69, high: 14.98, low: 13.40, vol: 305591 },
+    { date: '07-20', open: 13.96, close: 12.32, high: 14.18, low: 12.32, vol: 254270 },
+    { date: '07-21', open: 12.32, close: 13.23, high: 13.25, low: 11.09, vol: 429635 },
+    { date: '07-22', open: 13.00, close: 13.20, high: 13.73, low: 12.80, vol: 402024 },
+    { date: '07-23', open: 13.36, close: 13.24, high: 13.78, low: 12.81, vol: 297130 },
+    { date: '07-24', open: 12.98, close: 12.71, high: 13.30, low: 12.68, vol: 217949 },
+    { date: '07-27', open: 12.99, close: 13.98, high: 13.98, low: 12.64, vol: 377641 },
+    { date: '07-28', open: 13.80, close: 13.14, high: 14.10, low: 13.08, vol: 403628 },
+    { date: '07-29', open: 13.29, close: 12.99, high: 13.97, low: 12.64, vol: 442004 },
+    { date: '07-30', open: 12.91, close: 12.40, high: 13.13, low: 12.04, vol: 383690 },
+    { date: '07-31', open: 13.19, close: 12.67, high: 13.43, low: 12.65, vol: 416333 },
+    { date: '08-03', open: 12.44, close: 12.14, high: 12.61, low: 11.92, vol: 298389 },
+    { date: '08-04', open: 12.33, close: 12.91, high: 12.96, low: 11.95, vol: 329475 },
+    { date: '08-05', open: 12.78, close: 13.85, high: 14.05, low: 12.75, vol: 421668 },
+    { date: '08-06', open: 13.83, close: 14.43, high: 14.67, low: 13.83, vol: 505586 },
+    { date: '08-07', open: 14.44, close: 15.09, high: 15.36, low: 14.23, vol: 601619 },
+    { date: '08-10', open: 15.15, close: 14.79, high: 15.25, low: 14.44, vol: 419408 },
+    { date: '08-11', open: 14.58, close: 14.82, high: 15.12, low: 14.54, vol: 316014 },
+    { date: '08-12', open: 14.75, close: 14.95, high: 15.04, low: 14.59, vol: 240353 },
+    { date: '08-13', open: 15.08, close: 14.51, high: 15.23, low: 14.50, vol: 253140 },
+    { date: '08-14', open: 14.57, close: 15.11, high: 15.28, low: 14.56, vol: 416302 },
+    { date: '08-17', open: 15.15, close: 15.58, high: 16.60, low: 15.15, vol: 464368 }
+  ];
+
+  const chart = echarts.init(document.getElementById('klineChart'));
+  chart.setOption({
+    grid: { left: 50, right: 50, top: 20, bottom: 60 },
+    xAxis: {
+      type: 'category',
+      data: klineData.map(d => d.date),
+      axisLabel: { fontSize: 11, color: '#888780' },
+      axisLine: { lineStyle: { color: '#d3d1c7' } }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        scale: true,
+        axisLabel: { fontSize: 11, color: '#888780' },
+        splitLine: { lineStyle: { color: '#f1efe8' } },
+        axisLine: { show: false }
+      },
+      {
+        type: 'value',
+        scale: true,
+        position: 'right',
+        axisLabel: { fontSize: 11, color: '#888780', formatter: v => (v / 10000).toFixed(0) + '万' },
+        splitLine: { show: false },
+        axisLine: { show: false }
+      }
+    ],
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', start: 0, end: 100, height: 20, bottom: 10, borderColor: '#d3d1c7', fillerColor: 'rgba(136,135,128,0.1)' }
+    ],
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#fff',
+      borderColor: '#d3d1c7',
+      textStyle: { color: '#2c2c2a', fontSize: 12 },
+      formatter: function(params) {
+        const d = klineData[params[0].dataIndex];
+        const change = d.close - d.open;
+        const pct = (change / d.open * 100).toFixed(2);
+        const color = change >= 0 ? '#e24b4a' : '#639922';
+        return `<div style="font-size:12px">
+          <div style="font-weight:500;margin-bottom:4px">${d.date}</div>
+          <div>开盘 <span style="color:${color}">${d.open.toFixed(2)}</span></div>
+          <div>收盘 <span style="color:${color}">${d.close.toFixed(2)}</span></div>
+          <div>最高 <span style="color:#e24b4a">${d.high.toFixed(2)}</span></div>
+          <div>最低 <span style="color:#639922">${d.low.toFixed(2)}</span></div>
+          <div>涨跌 <span style="color:${color}">${change >= 0 ? '+' : ''}${change.toFixed(2)} (${pct}%)</span></div>
+          <div>成交量 ${(d.vol / 10000).toFixed(1)}万手</div>
+        </div>`;
+      }
+    },
+    series: [
+      {
+        name: '日K',
+        type: 'candlestick',
+        data: klineData.map(d => [d.open, d.close, d.low, d.high]),
+        itemStyle: {
+          color: '#e24b4a',
+          color0: '#639922',
+          borderColor: '#e24b4a',
+          borderColor0: '#639922'
+        }
+      },
+      {
+        name: '成交量',
+        type: 'bar',
+        yAxisIndex: 1,
+        data: klineData.map(d => ({
+          value: d.vol,
+          itemStyle: { color: d.close >= d.open ? 'rgba(226,75,74,0.4)' : 'rgba(99,153,34,0.4)' }
+        }))
+      }
+    ]
+  });
+  window.addEventListener('resize', () => chart.resize());
+</script>
+</body>
+</html>

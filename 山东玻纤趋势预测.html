@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>山东玻纤 (sh605006) 趋势预测分析</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #f5f5f0; color: #2c2c2a; padding: 24px; line-height: 1.6;
+  }
+  .container { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 500; }
+  h2 { font-size: 15px; font-weight: 500; margin-bottom: 12px; }
+  h3 { font-size: 13px; font-weight: 500; margin-bottom: 8px; }
+  .subtitle { font-size: 13px; color: #888780; }
+
+  .card {
+    background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px;
+    border: 0.5px solid #d3d1c7;
+  }
+  .up { color: #e24b4a; }
+  .down { color: #639922; }
+  .neutral { color: #5f5e5a; }
+  .muted { color: #888780; }
+
+  .header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 16px; margin-bottom: 20px; border-bottom: 0.5px solid #d3d1c7;
+  }
+  .header-right { text-align: right; }
+  .price-now { font-size: 30px; font-weight: 500; color: #e24b4a; }
+
+  .conclusion {
+    background: #fffdf5; border: 1px solid #f0e0a8; border-left: 4px solid #d9a520;
+    border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;
+  }
+  .conclusion h2 { color: #854f0b; margin-bottom: 8px; }
+  .conclusion p { font-size: 13px; }
+  .verdict-tag {
+    display: inline-block; font-size: 12px; padding: 3px 10px; border-radius: 4px;
+    background: #fcebeb; color: #a32d2d; font-weight: 500; margin-bottom: 8px;
+  }
+
+  .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .metric-card { background: #fff; border-radius: 8px; padding: 12px 14px; }
+  .metric-label { font-size: 12px; color: #888780; margin-bottom: 4px; }
+  .metric-value { font-size: 17px; font-weight: 500; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .chart-box { width: 100%; }
+  #klineChart { width: 100%; height: 400px; }
+  #minuteChart { width: 100%; height: 240px; }
+  #fundChart { width: 100%; height: 220px; }
+  #scenarioChart { width: 100%; height: 260px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 400; color: #888780; padding: 6px 0; border-bottom: 0.5px solid #d3d1c7; }
+  td { padding: 8px 0; border-bottom: 0.5px solid #f1efe8; }
+  td:last-child { text-align: right; }
+  .num { font-weight: 500; }
+
+  .signal { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+  .sig-bull { background: #fcebeb; color: #a32d2d; }
+  .sig-bear { background: #eaf3de; color: #3b6d11; }
+  .sig-warn { background: #faeeda; color: #854f0b; }
+
+  .level-bar {
+    display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    border-bottom: 0.5px solid #f1efe8; font-size: 13px;
+  }
+  .level-bar:last-child { border-bottom: none; }
+  .level-price { width: 90px; font-weight: 500; }
+  .level-line { flex: 1; height: 18px; border-radius: 4px; position: relative; }
+  .level-desc { width: 220px; font-size: 12px; color: #888780; }
+  .price-tag { font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+  .tag-r { background: #fcebeb; color: #a32d2d; }
+  .tag-g { background: #eaf3de; color: #3b6d11; }
+  .tag-y { background: #faeeda; color: #854f0b; }
+
+  .scenario-item { padding: 12px 0; border-bottom: 0.5px solid #f1efe8; }
+  .scenario-item:last-child { border-bottom: none; }
+  .scenario-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .scenario-name { font-weight: 500; font-size: 14px; }
+  .scenario-prob { font-size: 12px; }
+  .scenario-desc { font-size: 13px; color: #444441; }
+
+  .footer { font-size: 12px; color: #888780; text-align: center; margin-top: 16px; }
+  .warn-box {
+    background: #fdf6f6; border: 1px solid #f0d5d5; border-left: 4px solid #c0392b;
+    border-radius: 8px; padding: 14px 18px; font-size: 13px; margin-bottom: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div>
+      <h1>山东玻纤 sh605006 趋势预测分析</h1>
+      <div class="subtitle">量化指标 × 散户行为 × 大资金动向 三维交叉推演 | 数据截至 2026-08-17</div>
+    </div>
+    <div class="header-right">
+      <div class="price-now">15.58</div>
+      <div class="subtitle up">+0.47 (+3.11%) 冲高回落</div>
+    </div>
+  </div>
+
+  <div class="conclusion">
+    <span class="verdict-tag">核心判断</span>
+    <h2>短线（1-5日）偏回调，中线（1-4周）看 14.5 - 17.5 区间震荡</h2>
+    <p>
+      今日开盘 15 分钟冲至 <b>16.42</b>（+8.7%）后快速回吐、全天震荡走低，叠加 KDJ（K=80.8）/RSI2（86.8）/BOLL 突破上轨三指标同处超买区，<b>短线冲高回落、回调消化概率约 60%</b>。
+      但筹码平均成本 14.85、MA20 13.79 构成下方支撑带，20 日主力资金仍累计净流入，<b>中线更可能演绎 14.5-17.5 区间震荡</b>。方向选择的关键：放量站稳 17.5 则打开 19.3 空间，跌破 14.85 则反弹结束。
+    </p>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="metric-label">今日主力净流入</div>
+      <div class="metric-value up">+3017万</div>
+      <div class="muted" style="font-size:11px;">超大单 +2606万</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">5日主力净流</div>
+      <div class="metric-value down">-8594万</div>
+      <div class="muted" style="font-size:11px;">短线资金在撤</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">筹码获利盘 / 成本</div>
+      <div class="metric-value neutral">68% / 14.85</div>
+      <div class="muted" style="font-size:11px;">当前价高于成本4.9%</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">股东户数(3月底)</div>
+      <div class="metric-value neutral">39297户</div>
+      <div class="muted" style="font-size:11px;">较去年末 +18.5%</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>120日K线：暴跌后反弹，逼近压力区</h2>
+    <div class="chart-box" id="klineChart" role="img" aria-label="山东玻纤120日K线与关键价位"></div>
+    <table>
+      <tr><th>关键价位</th><th>价位</th><th>性质</th><th>依据</th></tr>
+      <tr><td>强压力</td><td class="num up">17.36 - 17.58</td><td><span class="signal sig-bear">压力</span></td><td>MA60 17.36 + 黄金分割0.382回撤 17.58 + 7月平台</td></tr>
+      <tr><td>中压力</td><td class="num up">16.60 - 16.62</td><td><span class="signal sig-bear">压力</span></td><td>今日高点 + 涨停价</td></tr>
+      <tr><td>强支撑</td><td class="num">14.85</td><td><span class="signal sig-bull">支撑</span></td><td>筹码平均成本（68%获利盘成本线）</td></tr>
+      <tr><td>中支撑</td><td class="num">14.38 - 14.60</td><td><span class="signal sig-bull">支撑</span></td><td>MA10 14.60 / MA30 14.38</td></tr>
+      <tr><td>破位线</td><td class="num">13.79</td><td><span class="signal sig-warn">警戒</span></td><td>MA20，跌破则反弹结构破坏</td></tr>
+    </table>
+  </div>
+
+  <div class="two-col">
+    <div class="card" style="margin-bottom:0;">
+      <h2>今日分时：冲高回落，抛压明显</h2>
+      <div class="chart-box" id="minuteChart" role="img" aria-label="山东玻纤今日分时走势"></div>
+      <p style="font-size:12px;color:#888780;">开盘15分钟内冲至16.42（+8.7%）即遭抛压，全天震荡回落，尾盘15.56收盘。上方卖压沉重，短线动能减弱。</p>
+    </div>
+    <div class="card" style="margin-bottom:0;">
+      <h2>主力资金：今日回流，5日仍流出</h2>
+      <div class="chart-box" id="fundChart" role="img" aria-label="山东玻纤主力资金净流入"></div>
+      <p style="font-size:12px;color:#888780;">今日主力回补3017万，但5日累计净流出8594万，说明近期反弹中主力逢高减仓，今日冲高回落可能是高位派发的一部分。</p>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card" style="margin-bottom:0;">
+      <h2>量化信号汇总</h2>
+      <table>
+        <tr><th>指标</th><th>数值</th><th>信号</th></tr>
+        <tr><td>MACD</td><td class="num">柱 +0.866</td><td><span class="signal sig-bull">金叉多头</span></td></tr>
+        <tr><td>KDJ</td><td class="num">K 80.8</td><td><span class="signal sig-warn">超买区</span></td></tr>
+        <tr><td>RSI(2)</td><td class="num">86.8</td><td><span class="signal sig-warn">严重超买</span></td></tr>
+        <tr><td>RSI(6)</td><td class="num">70.4</td><td><span class="signal sig-warn">超买</span></td></tr>
+        <tr><td>RSI(12/24)</td><td class="num">56.1 / 50.5</td><td><span class="signal sig-bull">中性偏多</span></td></tr>
+        <tr><td>BOLL</td><td class="num">触上轨15.83</td><td><span class="signal sig-warn">超强/超买</span></td></tr>
+        <tr><td>MA 5/10/20/30</td><td class="num">14.99/14.60/13.79/14.38</td><td><span class="signal sig-bull">多头排列</span></td></tr>
+        <tr><td>MA60</td><td class="num">17.36</td><td><span class="signal sig-bear">上方压制</span></td></tr>
+      </table>
+      <p style="font-size:12px;color:#888780;margin-top:8px;">多空信号交织：趋势指标（MACD/均线）偏多，但摆动指标（KDJ/RSI）全线超买——<b>典型的短线过热特征</b>。</p>
+    </div>
+    <div class="card" style="margin-bottom:0;">
+      <h2>散户 vs 大资金 结构对比</h2>
+      <table>
+        <tr><th>维度</th><th>散户</th><th>大资金</th></tr>
+        <tr><td>资金流(今日)</td><td class="num down">小单 -7779万</td><td class="num up">主力 +3017万</td></tr>
+        <tr><td>资金流(5日)</td><td class="muted">—</td><td class="num down">-8594万</td></tr>
+        <tr><td>资金流(20日)</td><td class="muted">—</td><td class="num up">+5999万</td></tr>
+        <tr><td>筹码行为</td><td class="num">户数+18.5%分散化</td><td class="num">国资锁仓67.8%</td></tr>
+        <tr><td>获利盘</td><td class="num">68%获利</td><td class="muted">成本14.85</td></tr>
+        <tr><td>外资参与</td><td class="muted">—</td><td class="num">合计约1.3%</td></tr>
+      </table>
+      <p style="font-size:12px;color:#888780;margin-top:8px;">
+        <b>核心矛盾：</b>国资+东兴合计67.8%锁仓，真实流通盘仅约32%，股价波动天然被放大；一季度股东户数激增18.5%，筹码从集中转向分散——<b>这是6月暴跌前的预警信号，本次反弹中需要警惕重演</b>。
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>三情景推演与触发条件</h2>
+    <div class="chart-box" id="scenarioChart" role="img" aria-label="三种情景概率"></div>
+    <div class="scenario-item">
+      <div class="scenario-head">
+        <span class="scenario-name">基准情景：区间震荡 14.5 - 17.5</span>
+        <span class="scenario-prob"><span class="tag-y">概率约 50%</span></span>
+      </div>
+      <div class="scenario-desc">
+        超买回调需求与筹码成本支撑形成拉锯。回踩 14.85-15.0 企稳后反复测试 16.6-17.4 压力。操作上：14.8-15.0 附近企稳可关注反弹机会，16.6 以上不追高。
+      </div>
+    </div>
+    <div class="scenario-item">
+      <div class="scenario-head">
+        <span class="scenario-name">上行突破：放量站上 17.5 → 看 19.3</span>
+        <span class="scenario-prob"><span class="tag-r">概率约 30%</span></span>
+      </div>
+      <div class="scenario-desc">
+        MACD 多头延续 + 半年报预增催化兑现。触发条件：<b>换手率 &gt; 8% 且收盘站稳 17.5</b>（MA60+0.382回撤共振位）两日确认，则打开至黄金分割0.5回撤 19.26 空间。
+      </div>
+    </div>
+    <div class="scenario-item">
+      <div class="scenario-head">
+        <span class="scenario-name">下行破位：跌破 14.85 → 看 13.8 / 12.8</span>
+        <span class="scenario-prob"><span class="tag-g">概率约 20%</span></span>
+      </div>
+      <div class="scenario-desc">
+        超买+主力5日流出+冲高回落共振。触发条件：<b>放量跌破 14.85（筹码成本线）且 3 日内无法收回</b>，则反弹结束，下看 MA20 13.79 → 前低 12.8。
+      </div>
+    </div>
+  </div>
+
+  <div class="warn-box">
+    <b>反向声音（最容易被忽视的信号）：</b>7月14日半年报预增公告发布后，股价不涨反跌——从15.85一路跌至8月3日的12.14（-23%）。这说明市场对"业绩预增"的定价逻辑是<b>预期兑现即出货</b>。本次反弹若仅靠同一逻辑驱动，上方空间有限；真正的突破需要新的催化（如正式半年报超预期、行业景气数据）。
+  </div>
+
+  <div class="card">
+    <h2>事件与结构提醒</h2>
+    <table>
+      <tr><th>事件</th><th>日期</th><th>影响</th></tr>
+      <tr><td>半年报业绩预增公告</td><td>2026-07-14</td><td>利好但已兑现，正式半年报待跟踪</td></tr>
+      <tr><td>5%以上股东减持完成</td><td>2026-07-31</td><td>减持利空出清</td></tr>
+      <tr><td>山玻转债赎回摘牌</td><td>2026-07-07</td><td>股本变动落地</td></tr>
+      <tr><td>结构特征</td><td>—</td><td>国资67.8%锁仓，实际流通盘小，波动放大</td></tr>
+      <tr><td>估值状态</td><td>—</td><td>PE为负（亏损中），PB 3.39，不适用传统估值框架</td></tr>
+    </table>
+  </div>
+
+  <div class="footer">
+    数据来源：腾讯自选股（2026-08-17） | 本报告为量化与资金面分析推演，不构成投资建议。投资有风险，决策需谨慎。
+  </div>
+
+</div>
+
+<script>
+const kData = [
+  ['2026-02-24', 10.38], ['2026-02-25', 10.69], ['2026-02-26', 11.10], ['2026-02-27', 10.61],
+  ['2026-03-02', 10.35], ['2026-03-03', 9.32], ['2026-03-04', 9.54], ['2026-03-05', 9.49],
+  ['2026-03-06', 9.33], ['2026-03-09', 9.17], ['2026-03-10', 9.62], ['2026-03-11', 9.59],
+  ['2026-03-12', 9.68], ['2026-03-13', 9.55], ['2026-03-16', 9.70], ['2026-03-17', 9.12],
+  ['2026-03-18', 9.38], ['2026-03-19', 8.79], ['2026-03-20', 8.64], ['2026-03-23', 8.11],
+  ['2026-03-24', 8.51], ['2026-03-25', 8.85], ['2026-03-26', 8.63], ['2026-03-27', 8.75],
+  ['2026-03-30', 9.14], ['2026-03-31', 8.79], ['2026-04-01', 9.67], ['2026-04-02', 9.48],
+  ['2026-04-03', 9.18], ['2026-04-07', 9.25], ['2026-04-08', 9.60], ['2026-04-09', 9.20],
+  ['2026-04-10', 10.12], ['2026-04-13', 10.58], ['2026-04-14', 10.55], ['2026-04-15', 10.14],
+  ['2026-04-16', 10.49], ['2026-04-17', 10.32], ['2026-04-20', 10.44], ['2026-04-21', 10.76],
+  ['2026-04-22', 11.03], ['2026-04-23', 10.64], ['2026-04-24', 10.31], ['2026-04-27', 11.34],
+  ['2026-04-28', 11.03], ['2026-04-29', 12.13], ['2026-04-30', 11.69], ['2026-05-06', 12.29],
+  ['2026-05-07', 13.52], ['2026-05-08', 14.87], ['2026-05-11', 16.36], ['2026-05-12', 16.99],
+  ['2026-05-13', 16.01], ['2026-05-14', 15.47], ['2026-05-15', 14.65], ['2026-05-18', 14.50],
+  ['2026-05-19', 14.90], ['2026-05-20', 14.37], ['2026-05-21', 14.31], ['2026-05-22', 15.74],
+  ['2026-05-25', 16.29], ['2026-05-26', 17.92], ['2026-05-27', 18.55], ['2026-05-28', 20.20],
+  ['2026-05-29', 18.32], ['2026-06-01', 16.49], ['2026-06-02', 16.85], ['2026-06-03', 17.19],
+  ['2026-06-04', 18.43], ['2026-06-05', 18.39], ['2026-06-08', 17.41], ['2026-06-09', 19.15],
+  ['2026-06-10', 21.07], ['2026-06-11', 22.26], ['2026-06-12', 20.59], ['2026-06-15', 21.80],
+  ['2026-06-16', 23.98], ['2026-06-17', 26.00], ['2026-06-18', 23.40], ['2026-06-22', 22.82],
+  ['2026-06-23', 21.00], ['2026-06-24', 22.42], ['2026-06-25', 23.71], ['2026-06-26', 24.94],
+  ['2026-06-29', 22.45], ['2026-06-30', 21.09], ['2026-07-01', 21.86], ['2026-07-02', 19.67],
+  ['2026-07-03', 18.32], ['2026-07-06', 17.21], ['2026-07-07', 16.96], ['2026-07-08', 16.01],
+  ['2026-07-09', 17.52], ['2026-07-10', 16.75], ['2026-07-13', 15.33], ['2026-07-14', 16.54],
+  ['2026-07-15', 15.85], ['2026-07-16', 14.84], ['2026-07-17', 13.69], ['2026-07-20', 12.32],
+  ['2026-07-21', 13.23], ['2026-07-22', 13.20], ['2026-07-23', 13.24], ['2026-07-24', 12.71],
+  ['2026-07-27', 13.98], ['2026-07-28', 13.14], ['2026-07-29', 12.99], ['2026-07-30', 12.40],
+  ['2026-07-31', 12.67], ['2026-08-03', 12.14], ['2026-08-04', 12.91], ['2026-08-05', 13.85],
+  ['2026-08-06', 14.43], ['2026-08-07', 15.09], ['2026-08-10', 14.79], ['2026-08-11', 14.82],
+  ['2026-08-12', 14.95], ['2026-08-13', 14.51], ['2026-08-14', 15.11], ['2026-08-17', 15.58]
+];
+
+const kline = echarts.init(document.getElementById('klineChart'));
+kline.setOption({
+  tooltip: {
+    trigger: 'axis',
+    backgroundColor: '#fff', borderColor: '#d3d1c7',
+    textStyle: { color: '#2c2c2a', fontSize: 12 }
+  },
+  legend: { data: ['收盘价', 'MA20', 'MA60', '关键位'], textStyle: { fontSize: 11, color: '#888780' } },
+  grid: { left: 50, right: 20, top: 30, bottom: 30 },
+  xAxis: {
+    type: 'category', data: kData.map(d => d[0]),
+    axisLabel: { fontSize: 10, color: '#888780', interval: 11 },
+    axisLine: { lineStyle: { color: '#d3d1c7' } }
+  },
+  yAxis: {
+    type: 'value', scale: true,
+    axisLabel: { fontSize: 11, color: '#888780' },
+    splitLine: { lineStyle: { color: '#f1efe8' } }
+  },
+  dataZoom: [{ type: 'inside', start: 0, end: 100 }],
+  series: [
+    {
+      name: '收盘价', type: 'line', data: kData.map(d => d[1]),
+      smooth: true, symbol: 'none',
+      lineStyle: { width: 2, color: '#e24b4a' },
+      markLine: {
+        symbol: 'none',
+        label: { fontSize: 10, color: '#888780', position: 'end' },
+        data: [
+          { yAxis: 17.36, name: 'MA60/0.382回撤', lineStyle: { color: '#a32d2d', type: 'dashed' } },
+          { yAxis: 16.62, name: '涨停价', lineStyle: { color: '#d4537e', type: 'dashed' } },
+          { yAxis: 14.85, name: '筹码成本', lineStyle: { color: '#3b6d11', type: 'dashed' } },
+          { yAxis: 13.79, name: 'MA20', lineStyle: { color: '#854f0b', type: 'dashed' } }
+        ]
+      }
+    }
+  ]
+});
+window.addEventListener('resize', () => kline.resize());
+
+const minute = echarts.init(document.getElementById('minuteChart'));
+minute.setOption({
+  tooltip: {
+    trigger: 'axis',
+    backgroundColor: '#fff', borderColor: '#d3d1c7',
+    textStyle: { color: '#2c2c2a', fontSize: 12 }
+  },
+  grid: { left: 45, right: 15, top: 20, bottom: 25 },
+  xAxis: {
+    type: 'category',
+    data: ['09:30','09:35','09:40','09:45','09:50','09:55','10:00','10:05','10:10','10:15','10:20','10:25','10:30','10:35','10:40','10:45','10:50','10:55','11:00','11:05','11:10','11:15','11:20','11:25','11:30','13:00','13:05','13:10','13:15','13:20','13:25','13:30','13:35','13:40','13:45','13:50','13:55'],
+    axisLabel: { fontSize: 10, color: '#888780', interval: 5 },
+    axisLine: { lineStyle: { color: '#d3d1c7' } }
+  },
+  yAxis: {
+    type: 'value', min: 15.0, max: 16.6,
+    axisLabel: { fontSize: 11, color: '#888780' },
+    splitLine: { lineStyle: { color: '#f1efe8' } }
+  },
+  series: [{
+    name: '分时价', type: 'line', smooth: false, symbol: 'none',
+    data: [15.15,16.28,15.86,15.89,15.73,15.57,15.45,15.43,15.37,15.37,15.39,15.41,15.37,15.44,15.53,15.50,15.50,15.51,15.51,15.53,15.49,15.43,15.44,15.45,15.46,15.46,15.43,15.50,15.52,15.55,15.52,15.50,15.53,15.55,15.59,15.58,15.56],
+    lineStyle: { width: 1.5, color: '#185fa5' },
+    areaStyle: { color: 'rgba(24,95,165,0.08)' },
+    markLine: {
+      symbol: 'none',
+      label: { fontSize: 10, color: '#888780' },
+      data: [
+        { yAxis: 16.42, name: '冲高16.42', lineStyle: { color: '#e24b4a', type: 'dashed' } },
+        { yAxis: 15.11, name: '昨收', lineStyle: { color: '#888780', type: 'dashed' } }
+      ]
+    }
+  }]
+});
+window.addEventListener('resize', () => minute.resize());
+
+const fund = echarts.init(document.getElementById('fundChart'));
+fund.setOption({
+  tooltip: {
+    trigger: 'axis',
+    backgroundColor: '#fff', borderColor: '#d3d1c7',
+    textStyle: { color: '#2c2c2a', fontSize: 12 },
+    formatter: function(p) {
+      var v = p[0].value;
+      var sign = v >= 0 ? '+' : '';
+      return p[0].name + '<br>净流入: <b>' + sign + (v / 10000).toFixed(0) + '万</b>';
+    }
+  },
+  grid: { left: 45, right: 15, top: 20, bottom: 25 },
+  xAxis: {
+    type: 'category',
+    data: ['今日', '5日', '10日', '20日'],
+    axisLabel: { fontSize: 11, color: '#888780' },
+    axisLine: { lineStyle: { color: '#d3d1c7' } }
+  },
+  yAxis: {
+    type: 'value',
+    axisLabel: { fontSize: 11, color: '#888780', formatter: function(v) { return (v / 10000).toFixed(0) + '万'; } },
+    splitLine: { lineStyle: { color: '#f1efe8' } }
+  },
+  series: [{
+    type: 'bar',
+    data: [
+      { value: 30172134, itemStyle: { color: '#e24b4a' } },
+      { value: -85937556, itemStyle: { color: '#639922' } },
+      { value: 17283414, itemStyle: { color: '#e24b4a' } },
+      { value: 59985494, itemStyle: { color: '#e24b4a' } }
+    ],
+    barWidth: 34,
+    label: {
+      show: true, position: 'top', fontSize: 11,
+      formatter: function(p) { var v = p.value; return (v >= 0 ? '+' : '') + (v / 10000).toFixed(0) + '万'; }
+    }
+  }]
+});
+window.addEventListener('resize', () => fund.resize());
+
+const scenario = echarts.init(document.getElementById('scenarioChart'));
+scenario.setOption({
+  tooltip: { trigger: 'item', backgroundColor: '#fff', borderColor: '#d3d1c7', textStyle: { color: '#2c2c2a', fontSize: 12 } },
+  series: [{
+    type: 'pie', radius: ['42%', '68%'], center: ['30%', '50%'],
+    label: { fontSize: 11, color: '#444441', formatter: '{b}: {d}%' },
+    labelLine: { lineStyle: { color: '#d3d1c7' } },
+    data: [
+      { name: '区间震荡', value: 50, itemStyle: { color: '#f0c05a' } },
+      { name: '上行突破', value: 30, itemStyle: { color: '#e24b4a' } },
+      { name: '下行破位', value: 20, itemStyle: { color: '#639922' } }
+    ]
+  }]
+});
+window.addEventListener('resize', () => scenario.resize());
+</script>
+</body>
+</html>
