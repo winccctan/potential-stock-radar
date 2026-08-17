@@ -51,9 +51,17 @@ open http://localhost:8890
 ```
 ├── 潜力股雷达.html     # 主页面（选股雷达 + 个股速查）
 ├── server.js           # 本地数据服务（聚合行情/技术/资金/筹码数据）
+├── index.html          # GitHub Pages 入口页
 ├── 山东玻纤股价监控.html # 个股监控看板示例
 └── 山东玻纤趋势预测.html # 多因子趋势预测报告示例
 ```
+
+## 在线访问（GitHub Pages）
+
+🔗 **https://winccctan.github.io/potential-stock-radar/**
+
+- 在线版可直接打开查看三个页面（榜单数据为发布时快照）
+- 实时个股查询需要本地数据服务（`node server.js` 后访问 `http://localhost:8890`），页面内置 9 只共振股快照兜底
 
 ## 数据说明
 
