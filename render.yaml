@@ -1,0 +1,13 @@
+# Render Blueprint — 潜力股雷达 Web 服务
+# 使用方式：Render 控制台 → New → Blueprint → 选择本仓库
+services:
+  - type: web
+    name: potential-stock-radar
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20

@@ -50,18 +50,40 @@ open http://localhost:8890
 
 ```
 ├── 潜力股雷达.html     # 主页面（选股雷达 + 个股速查）
-├── server.js           # 本地数据服务（聚合行情/技术/资金/筹码数据）
+├── server.js           # 数据服务（聚合行情/技术/资金/筹码数据）
+├── vendor/             # 内置的数据查询引擎（自包含，无外部依赖）
 ├── index.html          # GitHub Pages 入口页
 ├── 山东玻纤股价监控.html # 个股监控看板示例
-└── 山东玻纤趋势预测.html # 多因子趋势预测报告示例
+├── 山东玻纤趋势预测.html # 多因子趋势预测报告示例
+├── package.json        # Node 服务配置（npm start）
+└── render.yaml         # Render 云部署配置
 ```
 
-## 在线访问（GitHub Pages）
+## 在线访问
 
+### GitHub Pages（静态版）
 🔗 **https://winccctan.github.io/potential-stock-radar/**
 
 - 在线版可直接打开查看三个页面（榜单数据为发布时快照）
-- 实时个股查询需要本地数据服务（`node server.js` 后访问 `http://localhost:8890`），页面内置 9 只共振股快照兜底
+- 静态版仅支持快照池内 9 只股票查询
+
+### Render（完整实时版）
+部署后可通过公网链接访问，**任意股票实时查询** 全功能可用（与本地 `node server.js` 体验一致）。
+
+## 部署到 Render（免费）
+
+1. 将本仓库推送到 GitHub（已完成）
+2. 打开 [render.com](https://render.com) 并登录（可用 GitHub 账号）
+3. **New** → **Web Service** → 连接 GitHub 并选择 `potential-stock-radar` 仓库
+4. Render 会自动识别 Node 项目，关键配置：
+   - **Build Command**: `npm install`
+   - **Start Command**: `node server.js`
+   - 地区选择 **Singapore**（靠近国内，延迟更低）
+   - 免费实例每月 750 小时，15 分钟无访问会休眠，再次访问自动唤醒（约 30-60 秒）
+5. 点击 **Create Web Service**，等待构建完成（约 2-3 分钟）
+6. 完成后访问 Render 分配的 `https://xxx.onrender.com` 即可
+
+> 也可用仓库内的 `render.yaml` 走 Blueprint 方式一键创建：New → Blueprint → 选择本仓库。
 
 ## 数据说明
 

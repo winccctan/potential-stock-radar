@@ -1,19 +1,19 @@
 /**
  * 潜力股雷达 · 个股查询数据服务
  * 静态托管 潜力股雷达.html，并提供 /api/search 与 /api/stock 实时数据接口
- * 启动：node server.js   （默认端口 8890）
+ * 启动：node server.js   （默认端口 8890，云端部署使用 $PORT 环境变量）
  */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 
-const NODE = '/Users/tansy/.workbuddy/binaries/node/versions/22.22.2/bin/node';
-const CLI = '/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/resources/builtin-skills/westock-data/scripts/index.js';
-const PORT = 8890;
+const NODE = process.execPath;
+const CLI = path.join(__dirname, 'vendor', 'westock-data', 'scripts', 'index.js');
+const PORT = process.env.PORT || 8890;
 const ROOT = __dirname;
 
-function runCli(args, timeout = 20000) {
+function runCli(args, timeout = 30000) {
   return new Promise((resolve) => {
     execFile(NODE, [CLI, ...args], { timeout, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) { resolve({ ok: false, err: (stderr || err.message || 'CLI error').slice(0, 500) }); return; }
