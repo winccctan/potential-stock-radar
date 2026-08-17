@@ -2,6 +2,8 @@
 
 基于 **8 大信号源做多因子共振分析** 的 A 股潜力股筛选工具，支持任意个股的实时多维研判。
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/winccctan/potential-stock-radar)
+
 > ⚠️ 本项目仅供学习与研究参考，**不构成任何投资建议**。股市有风险，入市需谨慎。
 
 ## 功能特性
@@ -71,6 +73,18 @@ open http://localhost:8890
 部署后可通过公网链接访问，**任意股票实时查询** 全功能可用（与本地 `node server.js` 体验一致）。
 
 ## 部署到 Render（免费）
+
+### ⚡ 一键部署（推荐）
+
+点击上方 **Deploy to Render** 按钮（或直接访问 👉 [render.com/deploy?repo=winccctan/potential-stock-radar](https://render.com/deploy?repo=https://github.com/winccctan/potential-stock-radar)）：
+
+1. 用 GitHub 账号登录 Render（首次需授权）
+2. Render 自动读取仓库内 `render.yaml`，确认配置后点 **Apply**
+3. 等待 2-3 分钟构建完成，即可访问 `https://potential-stock-radar.onrender.com`
+
+无需填写任何表单——`render.yaml` 已预置 Build/Start 命令与免费套餐。
+
+### 手动部署
 
 1. 将本仓库推送到 GitHub（已完成）
 2. 打开 [render.com](https://render.com) 并登录（可用 GitHub 账号）
