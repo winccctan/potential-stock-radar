@@ -129,6 +129,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .vnote{margin-top:12px;background:var(--blueBg);border-left:3px solid var(--blue);border-radius:0 8px 8px 0;padding:10px 14px;font-size:12.5px;color:var(--blue);line-height:1.7}
 .qrisk{margin-top:10px;background:var(--amberBg);border-left:3px solid var(--amber);border-radius:0 8px 8px 0;padding:9px 12px;font-size:12.5px;color:var(--amber)}
 .qerr{margin-top:12px;background:var(--redBg);border:1px solid #F2C4C1;color:var(--red);border-radius:10px;padding:12px 16px;font-size:13px}
+.qhint{margin-top:12px;background:var(--blueBg);border:1px solid rgba(28,126,214,.25);color:var(--blue);border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.8}
+.qhint code{background:rgba(28,126,214,.1);padding:1px 6px;border-radius:4px;font-size:12px}
+.qpool{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.qpool button{font-size:12px;padding:4px 12px;border-radius:999px;border:1px solid rgba(28,126,214,.35);background:#fff;color:var(--blue);cursor:pointer;transition:all .15s}
+.qpool button:hover{background:rgba(28,126,214,.08);border-color:var(--blue)}
 .qloading{margin-top:14px;text-align:center;color:var(--hint);font-size:13px;padding:24px}
 .hint-tag{font-size:11px;color:var(--hint)}
 @media(max-width:860px){
@@ -163,6 +168,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <button id="qBtn">查询</button>
     </div>
     <div class="qsug" id="qSug"></div>
+    <div class="qhint" id="qHint" style="display:none">⚠️ 当前为<b>在线静态版</b>，仅支持快照池内股票的查询与展示；输入其他股票将提示不可用。<br>完整实时查询请本地运行 <code>node server.js</code> 后访问 <b>http://localhost:8890</b>。</div>
     <div class="qexamples">
       <span>试试：</span>
       <button data-q="山东玻纤">山东玻纤</button>
@@ -382,6 +388,32 @@ render();
 var LOCAL_MAP = {};
 STOCKS.forEach(function(s){ LOCAL_MAP[s.code]=s; LOCAL_MAP[s.name]=s; });
 
+/* 智能匹配快照池：完整代码 / 名称 / 纯6位数字 / sh/sz前缀 / 名称包含 */
+function findLocal(key){
+  if(!key) return null;
+  var k=String(key).trim().toLowerCase();
+  if(!k) return null;
+  if(LOCAL_MAP[k]||LOCAL_MAP[key.trim()]) return LOCAL_MAP[k]||LOCAL_MAP[key.trim()];
+  if(/^\d{6}$/.test(k)){
+    for(var c in LOCAL_MAP){ if(c.length>6 && c.slice(-6)===k) return LOCAL_MAP[c]; }
+  }
+  var hit=null;
+  STOCKS.forEach(function(s){ if(!hit && s.name && s.name.indexOf(key.trim())>-1) hit=s; });
+  return hit;
+}
+/* 快照池股票列表（用于在线版快捷入口） */
+var POOL_NAMES=STOCKS.map(function(s){return s.name;});
+
+/* 探测后端是否可用（区分本地服务版 / 在线静态版） */
+(function probeBackend(){
+  var bar=document.getElementById('qHint');
+  if(!bar) return;
+  fetch('/api/stock?q=probe', {cache:'no-store'})
+    .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+    .then(function(d){ if(!d||!d.ok) throw 0; bar.style.display='none'; })
+    .catch(function(){ bar.style.display=''; });
+})();
+
 function escapeHtml(s){
   return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -539,7 +571,7 @@ function queryStock(key){
   if(!key) return;
   var box=document.getElementById('qResult');
   box.innerHTML='<div class="qloading">正在拉取 <b>'+escapeHtml(key)+'</b> 的实时数据…</div>';
-  var local=LOCAL_MAP[key]||LOCAL_MAP[key.toLowerCase()];
+  var local=findLocal(key);
   fetch('/api/stock?q='+encodeURIComponent(key), {cache:'no-store'})
     .then(function(r){ if(!r.ok) throw new Error('服务返回 '+r.status); return r.json(); })
     .then(function(d){
@@ -548,10 +580,18 @@ function queryStock(key){
       box.scrollIntoView({behavior:'smooth', block:'nearest'});
     })
     .catch(function(e){
+      var errMsg=(e&&e.message)?e.message:'网络异常';
       if(local&&local.price){
-        box.innerHTML=renderLocalCard(local)+'<div class="qerr">实时接口不可用（'+escapeHtml(e.message)+'），以上为已收录快照数据。启动本地服务后可获取实时行情：<b>node server.js</b></div>';
+        box.innerHTML=renderLocalCard(local)
+          +'<div class="qerr"><b>实时接口不可用</b>（'+escapeHtml(errMsg)+'），以上为已收录的快照数据。<br>本地启动 <code>node server.js</code> 后访问 <b>http://localhost:8890</b> 可获取实时行情。</div>';
       }else{
-        box.innerHTML='<div class="qerr"><b>查询失败：</b>'+escapeHtml(e.message)+'<br>请确认已启动本地数据服务（<b>node server.js</b>）且代码/名称正确（如 600519 / sh600519 / 贵州茅台）。</div>';
+        var chips=POOL_NAMES.map(function(n){
+          return '<button data-q="'+escapeHtml(n)+'">'+escapeHtml(n)+'</button>';
+        }).join('');
+        box.innerHTML='<div class="qerr"><b>未找到该股票：</b>'+escapeHtml(errMsg)+'<br>'
+          +'在线静态版仅支持已收录的 <b>'+POOL_NAMES.length+'</b> 只共振股快照查询，且不含 <b>'+escapeHtml(key)+'</b>。<br>'
+          +'如需查询任意股票（如 600519 / 贵州茅台），请本地启动数据服务：<code>node server.js</code> → 打开 <b>http://localhost:8890</b></div>'
+          +'<div class="qhint">📌 当前在线版可查询的快照股：<div class="qpool">'+chips+'</div></div>';
       }
     });
 }
@@ -578,7 +618,18 @@ qInput.addEventListener('input', function(){
           return '<div data-code="'+x.code+'">'+escapeHtml(x.name)+'<span class="c">'+(x.code||'').toUpperCase()+'</span></div>';
         }).join('')+'</div>';
       })
-      .catch(function(){ qSug.innerHTML=''; });
+      .catch(function(){
+        /* 后端不可用：降级为本地快照池模糊匹配 */
+        var kl=k.toLowerCase(), kk=k.trim(), list=[];
+        STOCKS.forEach(function(s){
+          var code6=(s.code||'').toLowerCase().slice(-6);
+          if((s.name&&s.name.indexOf(kk)>-1)||code6.indexOf(kl)>-1) list.push(s);
+        });
+        if(!list.length){ qSug.innerHTML=''; return; }
+        qSug.innerHTML='<div class="sg">'+list.map(function(s){
+          return '<div data-code="'+s.code+'">'+escapeHtml(s.name)+'<span class="c">快照</span></div>';
+        }).join('')+'</div>';
+      });
   }, 350);
 });
 qSug.addEventListener('click', function(e){
@@ -587,6 +638,13 @@ qSug.addEventListener('click', function(e){
   qInput.value=div.getAttribute('data-code');
   qSug.innerHTML='';
   queryStock(div.getAttribute('data-code'));
+});
+/* 结果区事件委托：支持快照池快捷按钮（动态生成） */
+document.getElementById('qResult').addEventListener('click', function(e){
+  var btn=e.target.closest('button[data-q]');
+  if(!btn) return;
+  qInput.value=btn.getAttribute('data-q');
+  queryStock(btn.getAttribute('data-q'));
 });
 document.addEventListener('click', function(e){ if(!e.target.closest('.qsug')&&!e.target.closest('#qInput')) qSug.innerHTML=''; });
 </script>
