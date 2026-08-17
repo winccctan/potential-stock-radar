@@ -168,7 +168,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <button id="qBtn">查询</button>
     </div>
     <div class="qsug" id="qSug"></div>
-    <div class="qhint" id="qHint" style="display:none">⚠️ 当前为<b>在线静态版</b>，仅支持快照池内股票的查询与展示；输入其他股票将提示不可用。<br>完整实时查询请本地运行 <code>node server.js</code> 后访问 <b>http://localhost:8890</b>。</div>
+    <div class="qhint" id="qHint" style="display:none"></div>
     <div class="qexamples">
       <span>试试：</span>
       <button data-q="山东玻纤">山东玻纤</button>
@@ -258,6 +258,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 </div>
 
+<script src="live-api.js"></script>
 <script>
 var SIG = {
   buffet:{t:'价值龙头', c:'b-buffet'},
@@ -404,14 +405,28 @@ function findLocal(key){
 /* 快照池股票列表（用于在线版快捷入口） */
 var POOL_NAMES=STOCKS.map(function(s){return s.name;});
 
-/* 探测后端是否可用（区分本地服务版 / 在线静态版） */
+/* 探测后端可用性：本地 Node 服务 → 后端模式；否则 → 直连模式（腾讯/东财公开接口） */
 (function probeBackend(){
   var bar=document.getElementById('qHint');
-  if(!bar) return;
+  if(window.LiveAPI) {
+    window.LiveAPI.detect().then(function(mode){
+      if(!bar) return;
+      if(mode==='backend'){ bar.style.display='none'; }
+      else{
+        bar.style.display='';
+        bar.style.background='rgba(29,158,117,.08)';
+        bar.style.border='1px solid rgba(29,158,117,.35)';
+        bar.style.color='var(--teal,#0F6E56)';
+        bar.innerHTML='🌐 当前为<b>直连行情模式</b>：通过腾讯/东方财富公开接口实时拉取数据，支持全市场 A 股查询（沪 / 深 / 北交所），无需本地服务。';
+      }
+    });
+    return;
+  }
+  /* 老版本回退：探测失败时展示静态版提示 */
   fetch('/api/stock?q=probe', {cache:'no-store'})
     .then(function(r){ if(!r.ok) throw 0; return r.json(); })
     .then(function(d){ if(!d||!d.ok) throw 0; bar.style.display='none'; })
-    .catch(function(){ bar.style.display=''; });
+    .catch(function(){ if(bar) bar.style.display=''; });
 })();
 
 function escapeHtml(s){
@@ -494,7 +509,7 @@ function barW(v){ return Math.min(100, Math.max(2, Math.abs(v)/8*100)); }
 function renderStockCard(d){
   var q=d.quote, f=d.fund||{};
   var v=computeVerdict(d);
-  var pos=Math.round((q.price-q.low_52week)/(q.high_52week-q.low_52week)*100);
+  var pos=(q.high_52week>q.low_52week)?Math.round((q.price-q.low_52week)/(q.high_52week-q.low_52week)*100):50;
   var rng='<div class="range" style="margin-top:8px"><span class="rk">'+fmt(q.low_52week,2)+'</span><div class="track"><i style="left:calc('+pos+'% - 7px)"></i></div><span class="rk">'+fmt(q.high_52week,2)+'</span></div>';
   var peTxt=(q.pe_ratio!=null&&q.pe_ratio<0)?'亏损':fmt(q.pe_ratio,1);
   var peF=(q.pe_fwd!=null&&q.pe_fwd>0)?fmt(q.pe_fwd,1):'—';
@@ -509,22 +524,28 @@ function renderStockCard(d){
   var scs=v.sigs.map(function(s){
     return '<div class="sc"><div class="t"><span>'+s.k+'</span><span class="st-'+s.cls+'">●</span></div><div class="st st-'+s.cls+'">'+s.st+'</div><div class="v">'+s.v+'</div></div>';
   }).join('');
-  var scale=Math.max(5e8, Math.abs(+f.MainNetFlow20D||0), Math.abs(+f.MainNetFlow5D||0), Math.abs(+f.MainNetFlow||0));
-  var fb=fundBar('今日主力净流入', f.MainNetFlow, scale)
-    +fundBar('5日主力净流入', f.MainNetFlow5D, scale)
-    +fundBar('10日主力净流入', f.MainNetFlow10D, scale)
-    +fundBar('20日主力净流入', f.MainNetFlow20D, scale)
-    +fundBar('超大单净额', f.JumboNetFlow, scale)
-    +fundBar('大单净额', f.BlockNetFlow, scale)
-    +fundBar('中单净额', f.MidNetFlow, scale)
-    +fundBar('小单净额', f.SmallNetFlow, scale);
+  var fb='';
+  if(f.MainNetFlow!=null){
+    var scale=Math.max(5e8, Math.abs(+f.MainNetFlow20D||0), Math.abs(+f.MainNetFlow5D||0), Math.abs(+f.MainNetFlow||0));
+    fb=fundBar('今日主力净流入', f.MainNetFlow, scale)
+      +fundBar('5日主力净流入', f.MainNetFlow5D, scale)
+      +fundBar('10日主力净流入', f.MainNetFlow10D, scale)
+      +fundBar('20日主力净流入', f.MainNetFlow20D, scale)
+      +fundBar('超大单净额', f.JumboNetFlow, scale)
+      +fundBar('大单净额', f.BlockNetFlow, scale)
+      +fundBar('中单净额', f.MidNetFlow, scale)
+      +fundBar('小单净额', f.SmallNetFlow, scale);
+  }else{
+    fb='<div class="qerr" style="margin-top:8px">⚠️ 资金流数据暂时无法获取（数据源波动），行情与指标数据不受影响。</div>';
+  }
   var chip='';
   if(d.chip&&d.chip.chipAvgCost){
-    chip='<div class="kgrid">'
+    var estTag=d.chip.estimated?' <span style="font-weight:400;opacity:.65">（估算）</span>':'';
+    chip='<div class="sub" style="margin:14px 0 4px">筹码分布'+estTag+'</div><div class="kgrid">'
       +ki('获利盘比例', fmt(d.chip.chipProfitRate,1)+'%')
       +ki('筹码平均成本', fmt(d.chip.chipAvgCost,2)+' 元')
-      +ki('90%筹码集中度', fmt(d.chip.chipConcentration90,2)+'%')
-      +ki('70%筹码集中度', fmt(d.chip.chipConcentration70,2)+'%')
+      +ki('90%筹码集中度', (d.chip.chipConcentration90!=null?fmt(d.chip.chipConcentration90,2):'—')+'%')
+      +ki('70%筹码集中度', (d.chip.chipConcentration70!=null?fmt(d.chip.chipConcentration70,2):'—')+'%')
       +'</div>';
   }
   var risksHtml=v.risks.length
@@ -543,7 +564,7 @@ function renderStockCard(d){
     +'<div class="sub" style="margin:14px 0 4px">52 周价格区间（红点 = 现价）</div>'+rng
     +'<div class="sub" style="margin:14px 0 4px">技术信号 · 量化研判</div><div class="sigcards">'+scs+'</div>'
     +'<div class="sub" style="margin:14px 0 4px">资金动向（主力 / 大单 / 小单）</div>'+fb
-    +(chip?'<div class="sub" style="margin:14px 0 4px">筹码分布</div>'+chip:'')
+    +(chip?chip:'')
     +'<div class="verdict">'
     +'<div class="vd"><div class="k">量化面（趋势+摆动）</div><div class="num '+(v.quant>=0?'up':'dn')+'">'+(v.quant>0?'+':'')+fmt(v.quant,1)+'</div><div class="bar"><i style="width:'+barW(v.quant)+'%;background:'+(v.quant>=0?'#C9342E':'#3B6D11')+'"></i></div></div>'
     +'<div class="vd"><div class="k">资金面（主力流向）</div><div class="num '+(v.fund>=0?'up':'dn')+'">'+(v.fund>0?'+':'')+fmt(v.fund,1)+'</div><div class="bar"><i style="width:'+barW(v.fund)+'%;background:'+(v.fund>=0?'#C9342E':'#3B6D11')+'"></i></div></div>'
@@ -572,26 +593,54 @@ function queryStock(key){
   var box=document.getElementById('qResult');
   box.innerHTML='<div class="qloading">正在拉取 <b>'+escapeHtml(key)+'</b> 的实时数据…</div>';
   var local=findLocal(key);
+  var done=false;
+  function renderLive(d){
+    box.innerHTML=renderStockCard(d)
+      +'<div class="qerr" style="background:rgba(29,158,117,.07);border-color:rgba(29,158,117,.35);color:var(--teal,#0F6E56)"><b>直连模式</b>：数据来自腾讯 / 东方财富公开接口实时拉取，筹码分布为 K 线估算值。</div>';
+    box.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+  /* 1) 本地 Node 服务优先（完整数据） */
   fetch('/api/stock?q='+encodeURIComponent(key), {cache:'no-store'})
     .then(function(r){ if(!r.ok) throw new Error('服务返回 '+r.status); return r.json(); })
     .then(function(d){
+      if(done) return; done=true;
       if(!d.ok) throw new Error(d.err||'查询失败');
       box.innerHTML=renderStockCard(d);
       box.scrollIntoView({behavior:'smooth', block:'nearest'});
     })
     .catch(function(e){
-      var errMsg=(e&&e.message)?e.message:'网络异常';
-      if(local&&local.price){
-        box.innerHTML=renderLocalCard(local)
-          +'<div class="qerr"><b>实时接口不可用</b>（'+escapeHtml(errMsg)+'），以上为已收录的快照数据。<br>本地启动 <code>node server.js</code> 后访问 <b>http://localhost:8890</b> 可获取实时行情。</div>';
+      if(done) return; done=true;
+      /* 2) 后端不可用 → 前端直连公开行情接口（在线静态版全市场查询） */
+      if(window.LiveAPI){
+        window.LiveAPI.stock(key).then(renderLive).catch(function(e2){
+          var errMsg=(e2&&e2.message)?e2.message:(e&&e.message?e.message:'网络异常');
+          if(local&&local.price){
+            box.innerHTML=renderLocalCard(local)
+              +'<div class="qerr"><b>实时数据获取失败</b>（'+escapeHtml(errMsg)+'），以上为已收录的快照数据。<br>可稍后重试，或本地运行 <code>node server.js</code> 后访问 <b>http://localhost:8890</b>。</div>';
+          }else{
+            var chips=POOL_NAMES.map(function(n){
+              return '<button data-q="'+escapeHtml(n)+'">'+escapeHtml(n)+'</button>';
+            }).join('');
+            box.innerHTML='<div class="qerr"><b>未找到该股票：</b>'+escapeHtml(errMsg)+'<br>'
+              +'请检查代码或名称是否正确（如 600519 / 贵州茅台 / 山东玻纤）。<br>'
+              +'若持续失败，可本地启动完整数据服务：<code>node server.js</code> → 打开 <b>http://localhost:8890</b></div>'
+              +'<div class="qhint">📌 快照池内股票可快捷查询：<div class="qpool">'+chips+'</div></div>';
+          }
+        });
       }else{
-        var chips=POOL_NAMES.map(function(n){
-          return '<button data-q="'+escapeHtml(n)+'">'+escapeHtml(n)+'</button>';
-        }).join('');
-        box.innerHTML='<div class="qerr"><b>未找到该股票：</b>'+escapeHtml(errMsg)+'<br>'
-          +'在线静态版仅支持已收录的 <b>'+POOL_NAMES.length+'</b> 只共振股快照查询，且不含 <b>'+escapeHtml(key)+'</b>。<br>'
-          +'如需查询任意股票（如 600519 / 贵州茅台），请本地启动数据服务：<code>node server.js</code> → 打开 <b>http://localhost:8890</b></div>'
-          +'<div class="qhint">📌 当前在线版可查询的快照股：<div class="qpool">'+chips+'</div></div>';
+        var errMsg2=(e&&e.message)?e.message:'网络异常';
+        if(local&&local.price){
+          box.innerHTML=renderLocalCard(local)
+            +'<div class="qerr"><b>实时接口不可用</b>（'+escapeHtml(errMsg2)+'），以上为已收录的快照数据。<br>本地启动 <code>node server.js</code> 后访问 <b>http://localhost:8890</b> 可获取实时行情。</div>';
+        }else{
+          var chips2=POOL_NAMES.map(function(n){
+            return '<button data-q="'+escapeHtml(n)+'">'+escapeHtml(n)+'</button>';
+          }).join('');
+          box.innerHTML='<div class="qerr"><b>未找到该股票：</b>'+escapeHtml(errMsg2)+'<br>'
+            +'在线静态版仅支持已收录的 <b>'+POOL_NAMES.length+'</b> 只共振股快照查询，且不含 <b>'+escapeHtml(key)+'</b>。<br>'
+            +'如需查询任意股票（如 600519 / 贵州茅台），请本地启动数据服务：<code>node server.js</code> → 打开 <b>http://localhost:8890</b></div>'
+            +'<div class="qhint">📌 当前在线版可查询的快照股：<div class="qpool">'+chips2+'</div></div>';
+        }
       }
     });
 }
@@ -619,7 +668,17 @@ qInput.addEventListener('input', function(){
         }).join('')+'</div>';
       })
       .catch(function(){
-        /* 后端不可用：降级为本地快照池模糊匹配 */
+        /* 后端不可用 → 直连模式：腾讯智能搜索（全市场） */
+        if(window.LiveAPI){
+          window.LiveAPI.search(k).then(function(list){
+            if(!list.length){ qSug.innerHTML=''; return; }
+            qSug.innerHTML='<div class="sg">'+list.map(function(x){
+              return '<div data-code="'+x.code+'">'+escapeHtml(x.name)+'<span class="c">'+(x.code||'').toUpperCase()+'</span></div>';
+            }).join('')+'</div>';
+          }).catch(function(){ qSug.innerHTML=''; });
+          return;
+        }
+        /* 无直连引擎：降级为本地快照池模糊匹配 */
         var kl=k.toLowerCase(), kk=k.trim(), list=[];
         STOCKS.forEach(function(s){
           var code6=(s.code||'').toLowerCase().slice(-6);
