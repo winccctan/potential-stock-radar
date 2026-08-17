@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>潜力股雷达 · A股多因子共振选股工具</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --ink:#1f2430; --sub:#6b7280;
+    --line:#e5e7eb; --red:#e03131; --green:#2f9e44; --blue:#1c7ed6;
+    --shadow:0 1px 3px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+  .wrap{max-width:980px;margin:0 auto;padding:48px 24px 64px}
+  .hero{text-align:center;margin-bottom:40px}
+  .badge{display:inline-block;font-size:12px;font-weight:600;color:var(--blue);background:rgba(28,126,214,.1);border:1px solid rgba(28,126,214,.25);padding:4px 12px;border-radius:999px;margin-bottom:16px}
+  h1{font-size:32px;font-weight:800;letter-spacing:-.5px}
+  .sub{color:var(--sub);font-size:15px;margin-top:10px;line-height:1.7}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;box-shadow:var(--shadow);text-decoration:none;color:var(--ink);transition:transform .15s ease,box-shadow .15s ease;display:flex;flex-direction:column}
+  .card:hover{transform:translateY(-3px);box-shadow:0 4px 8px rgba(16,24,40,.08),0 16px 32px rgba(16,24,40,.1)}
+  .tag{font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 10px;border-radius:6px;align-self:flex-start;margin-bottom:14px}
+  .t1{background:#fff0f0;color:#e03131}
+  .t2{background:#eef5ff;color:#1c7ed6}
+  .t3{background:#f3f7f1;color:#2f9e44}
+  .card h3{font-size:17px;font-weight:700;margin-bottom:8px}
+  .card p{font-size:13px;color:var(--sub);line-height:1.7;flex:1}
+  .go{margin-top:16px;font-size:13px;font-weight:600;color:var(--blue)}
+  .foot{margin-top:40px;text-align:center;font-size:12px;color:#9ca3af;line-height:1.8}
+  .note{margin-top:16px;background:#fff8e6;border:1px solid #f5e2a8;color:#7a5c00;font-size:12.5px;line-height:1.8;padding:12px 16px;border-radius:10px}
+  .hl{color:var(--red);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <span class="badge">A股 · 多因子共振 · 数据驱动</span>
+    <h1>潜力股雷达</h1>
+    <p class="sub">基于 8 大信号源的多因子共振选股工具<br>信号命中越多，趋势 + 资金 + 基本面同时看好的确定性越高</p>
+  </div>
+
+  <div class="cards">
+    <a class="card" href="潜力股雷达.html">
+      <span class="tag t1">主页面 · 实时查询</span>
+      <h3>潜力股雷达</h3>
+      <p>信号热度雷达图 + 共振股榜单 + 个股详情。支持输入任意股票代码/名称，实时聚合行情、技术指标、资金流向、筹码分布，自动生成多因子研判。</p>
+      <span class="go">打开工具 →</span>
+    </a>
+    <a class="card" href="山东玻纤股价监控.html">
+      <span class="tag t2">示例 · 个股监控</span>
+      <h3>山东玻纤股价监控</h3>
+      <p>单只个股的监控看板：实时行情、30 日 K 线、技术指标、资金流向与近期公告，一键掌握持仓标的全貌。</p>
+      <span class="go">查看示例 →</span>
+    </a>
+    <a class="card" href="山东玻纤趋势预测.html">
+      <span class="tag t3">示例 · 趋势预测</span>
+      <h3>山东玻纤趋势预测</h3>
+      <p>量化面 + 散户面 + 大资金面三维度交叉验证的趋势推演报告，三情景概率分析 + 关键位监控提示。</p>
+      <span class="go">查看示例 →</span>
+    </a>
+  </div>
+
+  <div class="note">
+    ⚠️ <span class="hl">风险提示</span>：本工具基于公开行情数据的客观聚合，仅供学习研究参考，<b>不构成任何投资建议</b>。股市有风险，入市需谨慎。<br>
+    ℹ️ 说明：静态页面中的实时个股查询依赖本地数据服务（<code>node server.js</code>），在线版榜单数据为发布时快照。
+  </div>
+
+  <div class="foot">
+    <a href="https://github.com/winccctan/potential-stock-radar" style="color:#1c7ed6;text-decoration:none">GitHub 仓库</a> · 潜力股雷达 potential-stock-radar
+  </div>
+</div>
+</body>
+</html>
