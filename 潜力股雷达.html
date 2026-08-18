@@ -243,7 +243,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <button data-s="cap">市值</button>
         <button data-s="pe">PE</button>
       </div>
+      <button id="btnRefresh" style="margin-left:auto;border:1px solid var(--blue);background:var(--blueBg);color:var(--blue);border-radius:8px;padding:6px 16px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px">
+        <span id="refreshIcon">↻</span> <span id="refreshText">刷新雷达</span>
+      </button>
     </div>
+    <div id="radarStatus" style="display:none;margin-bottom:10px;padding:8px 14px;border-radius:8px;font-size:13px"></div>
     <table class="tbl">
       <thead>
         <tr><th>股票</th><th>现价</th><th>今日</th><th>信号</th><th>共振强度</th><th>PE(TTM)</th><th>总市值</th><th>5日涨幅</th></tr>
@@ -252,7 +256,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     </table>
   </div>
 
-  <div class="foot">
+  <div class="foot" id="footNote">
     数据来源：腾讯自选股结构化数据（策略选股 / 排行选股 / 行情快照），更新于 2026-08-17 收盘。<br>
     本页面仅为客观数据的多因子聚合展示，不构成任何投资建议。选股策略命中不代表必然上涨，高涨幅个股可能已包含巨大风险，请结合自身风险承受能力独立判断，投资有风险，入市需谨慎。
   </div>
@@ -314,22 +318,24 @@ var sortKey = {sig:function(s){return s.sigs.length;}, chg:function(s){return s.
 
 function fmt(n, d){ return (n==null||isNaN(n)) ? '—' : Number(n).toFixed(d==null?2:d); }
 function cls(v){ return v>0?'up':(v<0?'dn':''); }
-function badge(k){ var s=SIG[k]; return '<span class="badge '+s.c+'">'+s.t+'</span>'; }
+function badge(k){ var s=SIG[k]; if(!s) return '<span class="badge b-roe">'+k+'</span>'; return '<span class="badge '+s.c+'">'+s.t+'</span>'; }
 
 function detailHTML(s){
-  var pos = Math.round((s.price-s.low52)/(s.high52-s.low52)*100);
-  var rng = '<div class="range"><span class="rk">'+s.low52+'</span><div class="track"><i style="left:calc('+pos+'% - 7px)"></i></div><span class="rk">'+s.high52+'</span></div>';
+  var hi52=s.high52||0, lo52=s.low52||0, pos = (hi52>lo52)?Math.round((s.price-lo52)/(hi52-lo52)*100):50;
+  pos=Math.max(0,Math.min(100,pos));
+  var rng = '<div class="range"><span class="rk">'+(lo52||'—')+'</span><div class="track"><i style="left:calc('+pos+'% - 7px)"></i></div><span class="rk">'+(hi52||'—')+'</span></div>';
   var peF = s.peF>0 ? ' / 前瞻 '+fmt(s.peF,1) : '';
+  var pbStr = s.pb ? fmt(s.pb,2)+' 倍' : '—';
   return '<div class="detail">'
-    +'<div class="d-item"><div class="k">现价 / 今日涨跌</div><div class="v">'+fmt(s.price)+' 元　<span class="'+cls(s.chg)+'">'+ (s.chg>0?'+':'') + s.chg + '%</span></div></div>'
-    +'<div class="d-item"><div class="k">换手率 / 量比</div><div class="v">'+fmt(s.turn,2)+'%</div></div>'
+    +'<div class="d-item"><div class="k">现价 / 今日涨跌</div><div class="v">'+fmt(s.price)+' 元　<span class="'+cls(s.chg)+'">'+ (s.chg>0?'+':'') + fmt(s.chg,2) + '%</span></div></div>'
+    +'<div class="d-item"><div class="k">换手率</div><div class="v">'+fmt(s.turn,2)+'%</div></div>'
     +'<div class="d-item"><div class="k">市盈率 TTM</div><div class="v">'+fmt(s.pe,1)+' 倍'+peF+'</div></div>'
-    +'<div class="d-item"><div class="k">市净率 PB</div><div class="v">'+fmt(s.pb,2)+' 倍</div></div>'
-    +'<div class="d-item"><div class="k">5日 / 10日涨幅</div><div class="v"><span class="'+cls(s.chg5)+'">'+(s.chg5>0?'+':'')+s.chg5+'%</span> / <span class="'+cls(s.chg10)+'">'+(s.chg10>0?'+':'')+s.chg10+'%</span></div></div>'
-    +'<div class="d-item"><div class="k">总市值</div><div class="v">'+s.cap+' 亿元</div></div>'
-    +'<div class="d-item" style="grid-column:1/-1"><div class="k">52 周价格区间（红点 = 现价位置）</div>'+rng+'</div>'
-    +'<div class="d-item" style="grid-column:1/-1"><div class="k">信号解读</div><div class="v" style="font-weight:400;color:var(--sub);margin-top:4px">'+s.note+'</div></div>'
-    +'<div class="risk" style="grid-column:1/-1"><b>风险提示：</b>'+s.risk+'</div>'
+    +'<div class="d-item"><div class="k">市净率 PB</div><div class="v">'+pbStr+'</div></div>'
+    +'<div class="d-item"><div class="k">5日 / 10日涨幅</div><div class="v"><span class="'+cls(s.chg5)+'">'+(s.chg5>0?'+':'')+fmt(s.chg5,2)+'%</span> / <span class="'+cls(s.chg10)+'">'+(s.chg10>0?'+':'')+fmt(s.chg10,2)+'%</span></div></div>'
+    +'<div class="d-item"><div class="k">总市值</div><div class="v">'+(s.cap||'—')+' 亿元</div></div>'
+    +(hi52>0?'<div class="d-item" style="grid-column:1/-1"><div class="k">52 周价格区间（红点 = 现价位置）</div>'+rng+'</div>':'')
+    +'<div class="d-item" style="grid-column:1/-1"><div class="k">信号解读</div><div class="v" style="font-weight:400;color:var(--sub);margin-top:4px">'+(s.note||'暂无解读')+'</div></div>'
+    +'<div class="risk" style="grid-column:1/-1"><b>风险提示：</b>'+(s.risk||'暂无风险数据')+'</div>'
     +'</div>';
 }
 
@@ -342,17 +348,18 @@ function render(){
   });
   var html = '';
   list.forEach(function(s){
-    var sig = s.sigs.length>=3 ? '<span class="badge sig3">3 信号共振</span>' : '<span class="badge b-roe">2 信号</span>';
-    var bgs = s.sigs.map(badge).join('');
+    var nSigs = (s.sigs||[]).length;
+    var sig = nSigs>=3 ? '<span class="badge sig3">'+nSigs+' 信号共振</span>' : (nSigs===2 ? '<span class="badge b-roe">2 信号</span>' : '<span class="badge b-roe">'+nSigs+' 信号</span>');
+    var bgs = (s.sigs||[]).map(badge).join('');
     html += '<tr class="stock" data-code="'+s.code+'">'
       +'<td><div class="nm-cell"><div class="nm2">'+s.name+'</div><div class="cd">'+s.code+'</div></div></td>'
       +'<td style="font-weight:600">'+fmt(s.price)+'</td>'
-      +'<td class="chg '+cls(s.chg)+'">'+(s.chg>0?'+':'')+s.chg+'%</td>'
+      +'<td class="chg '+cls(s.chg)+'">'+(s.chg>0?'+':'')+fmt(s.chg,2)+'%</td>'
       +'<td><div class="badges">'+bgs+'</div></td>'
       +'<td>'+sig+'</td>'
       +'<td>'+fmt(s.pe,1)+'</td>'
-      +'<td>'+s.cap+' 亿</td>'
-      +'<td class="chg '+cls(s.chg5)+'">'+(s.chg5>0?'+':'')+s.chg5+'%</td>'
+      +'<td>'+(s.cap||'—')+' 亿</td>'
+      +'<td class="chg '+cls(s.chg5)+'">'+(s.chg5>0?'+':'')+fmt(s.chg5,2)+'%</td>'
       +'</tr>'
       +'<tr class="exp-row" data-exp="'+s.code+'" style="display:none"><td colspan="8">'+detailHTML(s)+'</td></tr>';
   });
@@ -384,6 +391,79 @@ document.getElementById('tbody').addEventListener('click', function(e){
 });
 
 render();
+
+/* ================= 刷新雷达：实时拉取最新推荐股票 ================= */
+var isRefreshing = false;
+function refreshRadar(){
+  if(isRefreshing) return;
+  isRefreshing = true;
+  var btn = document.getElementById('btnRefresh');
+  var icon = document.getElementById('refreshIcon');
+  var text = document.getElementById('refreshText');
+  var status = document.getElementById('radarStatus');
+  var tbody = document.getElementById('tbody');
+
+  btn.disabled = true;
+  icon.style.animation = 'spin 1s linear infinite';
+  text.textContent = '正在扫描…';
+  status.style.display = 'block';
+  status.style.background = 'var(--blueBg)';
+  status.style.color = 'var(--blue)';
+  status.innerHTML = '🔍 正在从多个数据源拉取候选股票（热搜榜 + 龙虎榜 + 涨幅/资金排行），计算 MACD / 主力资金 / 均线多因子信号…';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--hint)">⏳ 正在扫描全市场候选股票…</td></tr>';
+
+  LiveAPI.radar().then(function(result){
+    var stocks = result.stocks || [];
+    if(!stocks.length){
+      status.style.background = 'var(--amberBg)';
+      status.style.color = 'var(--amber)';
+      status.innerHTML = '⚠️ 未扫描到符合条件的股票，请稍后重试。';
+      render();
+      return;
+    }
+    STOCKS = stocks.map(function(s){
+      return {
+        code: s.code, name: s.name, price: s.price,
+        chg: s.chg||0, chg5: s.chg5||0, chg10: s.chg10||0,
+        pe: s.pe||0, peF: s.peF||0, pb: s.pb||0,
+        cap: s.cap||0, turn: s.turn||0,
+        high52: s.high52||0, low52: s.low52||0,
+        score: s.score||0,
+        sigs: s.sigs||[], sig3: s.sig3||(s.sigs&&s.sigs.length>=3),
+        note: s.note||'', risk: s.risk||''
+      };
+    });
+    LOCAL_MAP = {};
+    STOCKS.forEach(function(s){ LOCAL_MAP[s.code]=s; LOCAL_MAP[s.name]=s; });
+    POOL_NAMES = STOCKS.map(function(s){return s.name;});
+    render();
+
+    var src = result.source === 'backend' ? '本地数据服务' : '浏览器直连（腾讯/东方财富）';
+    var tm = result.updatedAt ? new Date(result.updatedAt).toLocaleString('zh-CN') : new Date().toLocaleString('zh-CN');
+    status.style.background = 'var(--tealBg)';
+    status.style.color = 'var(--teal)';
+    status.innerHTML = '✅ 已刷新 <b>'+stocks.length+'</b> 只候选股（数据源：'+src+'），更新时间：'+tm;
+
+    var foot = document.getElementById('footNote');
+    foot.innerHTML = '数据来源：'+src+'（热搜股 / 龙虎榜 / 涨幅排行 / 资金流排行），实时更新于 '+tm+'。<br>本页面仅为客观数据的多因子聚合展示，不构成任何投资建议。选股策略命中不代表必然上涨，高涨幅个股可能已包含巨大风险，请结合自身风险承受能力独立判断，投资有风险，入市需谨慎。';
+  }).catch(function(err){
+    status.style.background = 'var(--redBg)';
+    status.style.color = 'var(--red)';
+    status.innerHTML = '❌ 刷新失败：'+(err&&err.message?err.message:'未知错误')+'。请稍后重试。';
+    render();
+  }).then(function(){
+    isRefreshing = false;
+    btn.disabled = false;
+    icon.style.animation = '';
+    text.textContent = '刷新雷达';
+  });
+}
+
+var styleEl = document.createElement('style');
+styleEl.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(styleEl);
+
+document.getElementById('btnRefresh').addEventListener('click', refreshRadar);
 
 /* ================= 个股速查 ================= */
 var LOCAL_MAP = {};

@@ -380,10 +380,251 @@
     });
   }
 
+  /* ================= 雷达选股（浏览器直连版） ================= */
+
+  // 东财排行榜 JSONP：获取候选股票池
+  function emRankJSONP(sortField, pageSize, cbName) {
+    var cb = cbName || '__emRank_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+    var url = 'https://push2.eastmoney.com/api/qt/clist/get?cb=' + cb +
+      '&pn=1&pz=' + (pageSize || 20) + '&po=1&np=1&fltt=2&invt=2&fid=' + sortField +
+      '&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048' +
+      '&fields=f2,f3,f4,f12,f14,f6,f8,f9,f15,f16,f17,f20,f23,f62,f184';
+    return new Promise(function (resolve) {
+      var done = false;
+      var s = document.createElement('script');
+      var timer = setTimeout(function () {
+        if (done) return; done = true;
+        if (s.parentNode) s.parentNode.removeChild(s);
+        delete window[cb];
+        resolve([]);
+      }, 10000);
+      window[cb] = function (data) {
+        if (done) return; done = true;
+        clearTimeout(timer);
+        if (s.parentNode) s.parentNode.removeChild(s);
+        delete window[cb];
+        var arr = (data && data.data && data.data.diff) || [];
+        resolve(arr);
+      };
+      s.src = url;
+      s.onerror = function () {
+        if (done) return; done = true;
+        clearTimeout(timer);
+        if (s.parentNode) s.parentNode.removeChild(s);
+        delete window[cb];
+        resolve([]);
+      };
+      document.head.appendChild(s);
+    });
+  }
+
+  // 从东财排行结果提取候选股
+  function parseEmRank(arr, source) {
+    return arr.map(function (r) {
+      var code6 = String(r.f12 || '');
+      if (!code6 || code6 === '-') return null;
+      var mk;
+      if (code6.charAt(0) === '6' || code6.indexOf('9') === 0) mk = 'sh';
+      else if (code6.indexOf('8') === 0 || code6.indexOf('4') === 0) mk = 'bj';
+      else mk = 'sz';
+      return {
+        code: mk + code6,
+        name: r.f14 || '',
+        price: r.f2 > 0 ? r.f2 : null,
+        chg: r.f3 || 0,
+        pe: r.f9 > 0 ? r.f9 : 0,
+        cap: r.f20 > 0 ? Math.round(r.f20 / 1e8) : 0,
+        turn: r.f8 || 0,
+        high52: r.f15 || 0,
+        low52: r.f16 || 0,
+        amount: r.f6 || 0,
+        mainFlow: r.f62 || 0,
+        source: source
+      };
+    }).filter(Boolean);
+  }
+
+  // 为单股补充 K 线技术指标 + 资金流
+  function enrichStock(s) {
+    var norm = normCode(s.code);
+    if (!norm) return Promise.resolve(s);
+    return Promise.all([
+      fetchKline(norm.code, 120).catch(function () { return []; }),
+      fetchFund(norm.secid).catch(function () { return null; })
+    ]).then(function (res) {
+      var rows = res[0], fund = res[1];
+      if (rows.length >= 30) {
+        var closes = rows.map(function (r) { return r.close; });
+        var macd = calcMACD(closes);
+        var ma5 = calcMA(closes, 5), ma10 = calcMA(closes, 10), ma20 = calcMA(closes, 20);
+        s.macd = macd;
+        s.ma = { MA_5: ma5, MA_10: ma10, MA_20: ma20 };
+
+        // 5 日 / 10 日涨幅
+        var n = closes.length;
+        if (n >= 6) {
+          var i5 = n - 6;
+          s.chg5 = closes[i5] ? (s.price - closes[i5]) / closes[i5] * 100 : s.chg5 || 0;
+        }
+        if (n >= 11) {
+          var i10 = n - 11;
+          s.chg10 = closes[i10] ? (s.price - closes[i10]) / closes[i10] * 100 : s.chg10 || 0;
+        }
+
+        // 计算信号
+        var sigs = [];
+        if (macd.DIF > macd.DEA && macd.MACD > 0) sigs.push('macd');
+        if (fund && +fund.MainNetFlow > 1000e4) sigs.push('force');
+        if (fund && +fund.MainNetFlow5D > 0) sigs.push('cap');
+        if (ma5 && ma10 && ma20 && ma5 > ma10 && ma10 > ma20) sigs.push('force');
+        // 去重
+        var unique = [];
+        sigs.forEach(function (x) { if (unique.indexOf(x) < 0) unique.push(x); });
+        s.sigs = unique;
+        s.sig3 = unique.length >= 3;
+        if (fund) s.fund = fund;
+      } else {
+        s.sigs = s.sigs || [];
+      }
+      return s;
+    });
+  }
+
+  function radar() {
+    // 优先尝试后端
+    return fetch('/api/radar', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.err || '雷达接口错误');
+        MODE = 'backend';
+        return { stocks: d.stocks, updatedAt: d.updatedAt, source: 'backend' };
+      })
+      .catch(function () {
+        // 降级：浏览器直连东财排行
+        MODE = 'live';
+        return Promise.all([
+          emRankJSONP('f3', 15, '__emRankChg'),     // 涨幅排行
+          emRankJSONP('f62', 15, '__emRankFund')    // 主力资金排行
+        ]).then(function (results) {
+          var all = [];
+          var seen = {};
+          parseEmRank(results[0], '涨幅榜').forEach(function (s) {
+            if (!seen[s.code] && s.price) { seen[s.code] = 1; all.push(s); }
+          });
+          parseEmRank(results[1], '资金榜').forEach(function (s) {
+            if (!seen[s.code] && s.price) { seen[s.code] = 1; all.push(s); }
+          });
+
+          // 如果东财排行不可用，降级为刷新页面已有的快照池
+          if (!all.length && window.STOCKS && window.STOCKS.length) {
+            return refreshPoolStocks(window.STOCKS);
+          }
+          if (!all.length) throw new Error('无法获取候选股票数据，请稍后重试或本地启动 node server.js');
+
+          all = all.slice(0, 15);
+          var batch = [];
+          for (var i = 0; i < all.length; i += 5) {
+            batch.push(all.slice(i, i + 5));
+          }
+          return batch.reduce(function (p, group) {
+            return p.then(function () {
+              return Promise.all(group.map(enrichStock));
+            });
+          }, Promise.resolve()).then(function () {
+            return finalizeRadar(all);
+          });
+        });
+      });
+  }
+
+  // 刷新已有快照池股票的实时数据
+  function refreshPoolStocks(pool) {
+    var all = pool.map(function (s) {
+      return {
+        code: s.code, name: s.name, price: s.price,
+        chg: s.chg, chg5: s.chg5, chg10: s.chg10,
+        pe: s.pe, peF: s.peF, pb: s.pb, cap: s.cap,
+        turn: s.turn, high52: s.high52, low52: s.low52,
+        score: s.score, sigs: s.sigs || [], sig3: s.sig3,
+        source: '快照刷新'
+      };
+    });
+    var batch = [];
+    for (var i = 0; i < all.length; i += 3) {
+      batch.push(all.slice(i, i + 3));
+    }
+    return batch.reduce(function (p, group) {
+      return p.then(function () {
+        return Promise.all(group.map(function (s) {
+          return stock(s.code).then(function (d) {
+            var q = d.quote || {};
+            s.price = q.price || s.price;
+            s.chg = q.change_percent != null ? q.change_percent : s.chg;
+            s.chg5 = q.chg_5d != null ? q.chg_5d : s.chg5;
+            s.chg10 = q.chg_10d != null ? q.chg_10d : s.chg10;
+            s.pe = q.pe_ratio || s.pe;
+            s.peF = q.pe_fwd || s.peF;
+            s.pb = q.pb_ratio || s.pb;
+            s.cap = q.total_market_cap ? Math.round(q.total_market_cap) : s.cap;
+            s.turn = q.turnover_rate || s.turn;
+            s.high52 = q.high_52week || s.high52;
+            s.low52 = q.low_52week || s.low52;
+            // 重新计算信号
+            var macd = d.macd || {};
+            var ma = d.ma || {};
+            var fund = d.fund || {};
+            var sigs = [];
+            if (macd.DIF > macd.DEA && macd.MACD > 0) sigs.push('macd');
+            if (+fund.MainNetFlow > 1000e4) sigs.push('force');
+            if (+fund.MainNetFlow5D > 0) sigs.push('cap');
+            if (ma.MA_5 && ma.MA_10 && ma.MA_20 && ma.MA_5 > ma.MA_10 && ma.MA_10 > ma.MA_20) sigs.push('force');
+            var unique = [];
+            sigs.forEach(function (x) { if (unique.indexOf(x) < 0) unique.push(x); });
+            s.sigs = unique;
+            s.sig3 = unique.length >= 3;
+            return s;
+          }).catch(function () { return s; });
+        }));
+      });
+    }, Promise.resolve()).then(function () {
+      return finalizeRadar(all);
+    });
+  }
+
+  // 排序 + 生成简评
+  function finalizeRadar(all) {
+    all.sort(function (a, b) {
+      if ((b.sigs ? b.sigs.length : 0) !== (a.sigs ? a.sigs.length : 0))
+        return (b.sigs ? b.sigs.length : 0) - (a.sigs ? a.sigs.length : 0);
+      return b.chg - a.chg;
+    });
+    all.slice(0, 12).forEach(function (s) {
+      var parts = [];
+      if (s.sigs && s.sigs.indexOf('macd') >= 0) parts.push('MACD 金叉');
+      if (s.sigs && s.sigs.indexOf('force') >= 0) parts.push('主力抢筹');
+      if (s.sigs && s.sigs.indexOf('cap') >= 0) parts.push('资金 5 日净流入');
+      s.note = parts.length ? parts.join(' + ') + '，' : '';
+      s.note += '今日' + (s.chg > 0 ? '涨' : '跌') + Math.abs(s.chg).toFixed(2) + '%';
+      if (s.pe > 0) s.note += '，PE ' + s.pe.toFixed(1) + ' 倍';
+      if (s.cap > 0) s.note += '，市值 ' + s.cap + ' 亿';
+      var risks = [];
+      if (s.pe > 80) risks.push('PE ' + s.pe.toFixed(0) + ' 倍估值极高');
+      if (s.chg10 > 30) risks.push('10 日 +' + s.chg10.toFixed(0) + '% 短线超买');
+      if (s.turn > 15) risks.push('换手率 ' + s.turn.toFixed(1) + '% 波动剧烈');
+      s.risk = risks.length ? risks.join('；') + '。注意追高风险' : '暂无明显风险信号';
+    });
+    return {
+      stocks: all.slice(0, 12),
+      updatedAt: new Date().toISOString(),
+      source: 'live'
+    };
+  }
+
   window.LiveAPI = {
     detect: detect,
     search: search,
     stock: stock,
+    radar: radar,
     normCode: normCode,
     get mode() { return MODE; }
   };

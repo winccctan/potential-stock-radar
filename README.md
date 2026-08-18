@@ -79,9 +79,9 @@ open http://localhost:8890
 ### GitHub Pages（在线直连版）
 🔗 **https://winccctan.github.io/potential-stock-radar/**
 
-- 在线版可直接打开查看三个页面（榜单数据为发布时快照）
+- 在线版支持全市场 A 股实时查询，点击「刷新雷达」按钮可拉取最新候选股票
 - **任意股票实时查询**：自动启用直连模式（腾讯 / 东方财富公开接口），支持沪 / 深 / 北交所全市场 A 股
-- 完整数据（含筹码分布实值、更丰富字段）建议本地运行 `node server.js` 或部署 Render
+- 完整数据（含龙虎榜候选、筹码分布实值、更丰富字段）建议本地运行 `node server.js` 或部署 Render
 
 ### Render（完整实时版）
 部署后可通过公网链接访问，**任意股票实时查询** 全功能可用（与本地 `node server.js` 体验一致）。
