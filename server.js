@@ -4,6 +4,7 @@
  * 启动：node server.js   （默认端口 8890，云端部署使用 $PORT 环境变量）
  */
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
@@ -25,9 +26,34 @@ function runCli(args, timeout = 30000) {
   });
 }
 
+// HTTPS GET → JSON
+function httpGet(url, timeout) {
+  timeout = timeout || 10000;
+  return new Promise(function (resolve, reject) {
+    var req = https.get(url, { timeout: timeout }, function (res) {
+      var data = '';
+      res.on('data', function (chunk) { data += chunk; });
+      res.on('end', function () {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error('JSON parse error: ' + data.slice(0, 200))); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', function () { req.destroy(); reject(new Error('timeout')); });
+  });
+}
+
+// 新浪全 A 股排行 → 候选列表
+function sinaRank(sort, num) {
+  var url = 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData' +
+    '?page=1&num=' + num + '&sort=' + sort + '&asc=0&node=hs_a&_s_r_a=sort';
+  return httpGet(url).catch(function () { return []; });
+}
+
 function codeOf(q) {
   q = (q || '').trim().toLowerCase();
   if (/^(sh|sz|bj)\d{6}$/.test(q)) return q;
+
   if (/^\d{6}$/.test(q)) {
     if (q.startsWith('6') || q.startsWith('9')) return 'sh' + q;
     if (q.startsWith('4') || q.startsWith('8')) return 'bj' + q;
@@ -192,108 +218,159 @@ function findFund(batchRes, code) {
   return {};
 }
 
+// 从批量 K 线结果中提取收盘价 + 阶段高低
+function findKlineStats(batchRes, code) {
+  var result = { closes: [], high52: 0, low52: 0 };
+  if (!batchRes.ok || !batchRes.data) return result;
+  var d = batchRes.data;
+  if (Array.isArray(d)) {
+    var rows = d.filter(function (r) { return r.symbol === code; });
+    rows.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    var highs = [], lows = [];
+    rows.forEach(function (r) {
+      var c = +(r.last || r.close);
+      if (c) result.closes.push(c);
+      if (+r.high > 0) highs.push(+r.high);
+      if (+r.low > 0) lows.push(+r.low);
+    });
+    if (highs.length) result.high52 = Math.max.apply(null, highs);
+    if (lows.length) result.low52 = Math.min.apply(null, lows);
+  } else if (d.data && d.data[code]) {
+    var obj = d.data[code];
+    var klines = obj.qfqday || obj.day || [];
+    var highs2 = [], lows2 = [];
+    klines.forEach(function (r) {
+      result.closes.push(+r[2]);
+      if (+r[3] > 0) highs2.push(+r[3]);
+      if (+r[4] > 0) lows2.push(+r[4]);
+    });
+    if (highs2.length) result.high52 = Math.max.apply(null, highs2);
+    if (lows2.length) result.low52 = Math.min.apply(null, lows2);
+  }
+  return result;
+}
+
 async function getRadar() {
-  // 1. 多源候选：热搜股 + 龙虎榜
-  var [hotRes, lhbRes] = await Promise.all([
-    runCli(['hot', 'stock', '--raw', '--limit', '20']),
-    runCli(['lhb', '--type', 'institution,hotmoney', '--raw']).catch(function () { return { ok: false }; })
-  ]);
+  // 1. 新浪全 A 股排行获取候选（涨幅 + 换手率 + 成交额三榜合并）
+  var rankConfigs = [
+    { sort: 'changepercent', num: 30, name: '涨幅榜' },
+    { sort: 'turnoverratio', num: 20, name: '换手率榜' },
+    { sort: 'amount', num: 20, name: '成交额榜' }
+  ];
+
+  var rankResults = await Promise.all(rankConfigs.map(function (r) {
+    return sinaRank(r.sort, r.num).then(function (arr) {
+      return { name: r.name, data: arr || [] };
+    }).catch(function () { return { name: r.name, data: [] }; });
+  }));
 
   var candidates = [];
   var seen = {};
 
-  if (hotRes.ok && Array.isArray(hotRes.data)) {
-    hotRes.data.forEach(function (s) {
-      var code = s.code;
-      if (!code || seen[code]) return;
-      if (!/^(sh|sz|bj)\d{6}$/.test(code)) return;
+  rankResults.forEach(function (r) {
+    if (!r.data || !r.data.length) return;
+    r.data.forEach(function (s) {
+      var code6 = String(s.code || '');
+      if (!code6) return;
+      var mk;
+      if (code6.charAt(0) === '6' || code6.charAt(0) === '9') mk = 'sh';
+      else if (code6.charAt(0) === '8' || code6.charAt(0) === '4') mk = 'bj';
+      else mk = 'sz';
+      var code = mk + code6;
+      if (seen[code] || !(+s.trade > 0)) return;
       seen[code] = 1;
-      candidates.push({ code: code, name: (s.name || '').replace(/\s/g, ''), source: 'hot' });
-    });
-  }
-
-  if (lhbRes.ok && lhbRes.data && lhbRes.data.sections) {
-    lhbRes.data.sections.forEach(function (sec) {
-      if (!Array.isArray(sec)) return;
-      sec.forEach(function (s) {
-        var code = s['\u4ee3\u7801'] || s.code;
-        if (!code || seen[code]) return;
-        if (!/^(sh|sz|bj)\d{6}$/.test(code)) return;
-        seen[code] = 1;
-        var name = (s['\u540d\u79f0'] || s.name || '').replace(/\s/g, '');
-        candidates.push({ code: code, name: name, source: 'lhb' });
+      candidates.push({
+        code: code,
+        name: (s.name || '').replace(/\s/g, ''),
+        price: +s.trade,
+        chg: +s.changepercent || 0,
+        pe: +s.per || 0,
+        pb: +s.pb || 0,
+        cap: Math.round((+s.mktcap || 0) / 10000),
+        turn: +s.turnoverratio || 0,
+        source: r.name
       });
     });
+  });
+
+  // 降级：新浪排行不可用时，用 westock-data 热搜/龙虎榜
+  if (!candidates.length) {
+    var [hotRes, lhbRes] = await Promise.all([
+      runCli(['hot', 'stock', '--raw', '--limit', '20']),
+      runCli(['lhb', '--type', 'institution,hotmoney', '--raw']).catch(function () { return { ok: false }; })
+    ]);
+    if (hotRes.ok && Array.isArray(hotRes.data)) {
+      hotRes.data.forEach(function (s) {
+        var code = s.code;
+        if (!code || seen[code] || !/^(sh|sz|bj)\d{6}$/.test(code)) return;
+        seen[code] = 1;
+        candidates.push({ code: code, name: (s.name || '').replace(/\s/g, ''), price: 0, source: 'hot' });
+      });
+    }
+    if (lhbRes.ok && lhbRes.data && lhbRes.data.sections) {
+      lhbRes.data.sections.forEach(function (sec) {
+        if (!Array.isArray(sec)) return;
+        sec.forEach(function (s) {
+          var code = s.code || s['\u4ee3\u7801'];
+          if (!code || seen[code] || !/^(sh|sz|bj)\d{6}$/.test(code)) return;
+          seen[code] = 1;
+          candidates.push({ code: code, name: (s.name || s['\u540d\u79f0'] || '').replace(/\s/g, ''), price: 0, source: 'lhb' });
+        });
+      });
+    }
   }
 
   if (!candidates.length) throw new Error('未获取到候选股票');
 
-  // 限制候选数量
-  candidates = candidates.slice(0, 20);
-  var codes = candidates.map(function (c) { return c.code; });
-  var codesStr = codes.join(',');
+  // 限制候选数量，批量获取 K 线 + 资金流
+  candidates = candidates.slice(0, 30);
+  var codesStr = candidates.map(function (c) { return c.code; }).join(',');
 
-  // 2. 批量获取行情 + K线 + 资金流
-  var [qRes, kRes, fRes] = await Promise.all([
-    runCli(['quote', codesStr, '--raw'], 45000),
-    runCli(['kline', codesStr, '--period', 'day', '--limit', '120', '--fq', 'qfq', '--raw'], 45000),
+  // 2. 批量获取 K 线 + 资金流（新浪已提供行情基础数据）
+  var [kRes, fRes] = await Promise.all([
+    runCli(['kline', codesStr, '--period', 'day', '--limit', '250', '--fq', 'qfq', '--raw'], 60000),
     runCli(['fund', 'flow', codesStr, '--raw'], 45000).catch(function () { return { ok: false }; })
   ]);
 
   // 3. 逐股计算信号
   var results = [];
   candidates.forEach(function (c) {
-    var quote = findQuote(qRes, c.code);
-    if (!quote || !quote.price) return;
-
-    var closes = findCloses(kRes, c.code);
+    var ks = findKlineStats(kRes, c.code);
+    var closes = ks.closes;
     var macd = closes.length >= 30 ? calcMACD(closes) : {};
-    var ma5 = calcMA(closes, 5), ma10 = calcMA(closes, 10), ma20 = calcMA(closes, 20), ma60 = calcMA(closes, 60);
+    var ma5 = calcMA(closes, 5), ma10 = calcMA(closes, 10), ma20 = calcMA(closes, 20);
     var fund = findFund(fRes, c.code);
 
     // 5日 / 10日涨幅
-    var chg5 = null, chg10 = null;
+    var chg5 = 0, chg10 = 0;
     if (closes.length >= 6) {
       var i5 = closes.length - 6;
-      chg5 = closes[i5] ? (quote.price - closes[i5]) / closes[i5] * 100 : null;
+      chg5 = closes[i5] ? (c.price - closes[i5]) / closes[i5] * 100 : 0;
     }
     if (closes.length >= 11) {
       var i10 = closes.length - 11;
-      chg10 = closes[i10] ? (quote.price - closes[i10]) / closes[i10] * 100 : null;
+      chg10 = closes[i10] ? (c.price - closes[i10]) / closes[i10] * 100 : 0;
     }
 
-    // 优先使用行情接口提供的涨跌幅
-    var chgToday = quote.change_percent != null ? quote.change_percent : 0;
-    var chg5Val = quote.chg_5d != null ? quote.chg_5d : (chg5 || 0);
-    var chg10Val = quote.chg_10d != null ? quote.chg_10d : (chg10 || 0);
-
-    var sigs = computeSignals(quote, { macd: macd, ma: { MA_5: ma5, MA_10: ma10, MA_20: ma20, MA_60: ma60 } }, fund);
-    // 去重
+    var sigs = computeSignals({}, { macd: macd, ma: { MA_5: ma5, MA_10: ma10, MA_20: ma20 } }, fund);
     var uniqueSigs = [];
     sigs.forEach(function (s) { if (uniqueSigs.indexOf(s) < 0) uniqueSigs.push(s); });
 
-    var pe = +quote.pe_ratio || 0;
-    var pb = +quote.pb_ratio || 0;
-    var cap = +quote.total_market_cap ? Math.round(+quote.total_market_cap) : 0;
-    var turn = +quote.turnover_rate || 0;
-    var hi52 = +quote.high_52week || 0;
-    var lo52 = +quote.low_52week || 0;
-
     results.push({
       code: c.code,
-      name: c.name || (quote.name || '').replace(/\s/g, '') || c.code,
-      price: +quote.price,
-      chg: chgToday,
-      chg5: chg5Val,
-      chg10: chg10Val,
-      pe: pe,
-      peF: +quote.pe_fwd || 0,
-      pb: pb,
-      cap: cap,
-      turn: turn,
-      high52: hi52,
-      low52: lo52,
-      score: +quote.score || 0,
+      name: c.name || c.code,
+      price: c.price,
+      chg: c.chg,
+      chg5: chg5,
+      chg10: chg10,
+      pe: c.pe,
+      peF: 0,
+      pb: c.pb,
+      cap: c.cap,
+      turn: c.turn,
+      high52: ks.high52,
+      low52: ks.low52,
+      score: 0,
       sigs: uniqueSigs,
       sig3: uniqueSigs.length >= 3,
       source: c.source,
@@ -332,7 +409,7 @@ async function getRadar() {
     ok: true,
     stocks: results.slice(0, 12),
     updatedAt: new Date().toISOString(),
-    sources: ['热搜股', '龙虎榜'],
+    sources: ['新浪全A股排行'],
     count: results.length
   };
 }

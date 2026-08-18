@@ -382,7 +382,42 @@
 
   /* ================= 雷达选股（浏览器直连版） ================= */
 
-  // 东财排行榜 JSONP：获取候选股票池
+  // 新浪全 A 股排行（CORS *，fetch 直连）
+  function sinaRank(sort, num) {
+    var url = 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData' +
+      '?page=1&num=' + (num || 30) + '&sort=' + sort + '&asc=0&node=hs_a&_s_r_a=sort';
+    return fetch(url, { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .catch(function () { return []; });
+  }
+
+  // 解析新浪排行数据 → 标准候选格式
+  function parseSinaRank(arr, source) {
+    if (!arr || !arr.length) return [];
+    return arr.map(function (s) {
+      var code6 = String(s.code || '');
+      if (!code6) return null;
+      var mk;
+      if (code6.charAt(0) === '6' || code6.charAt(0) === '9') mk = 'sh';
+      else if (code6.charAt(0) === '8' || code6.charAt(0) === '4') mk = 'bj';
+      else mk = 'sz';
+      return {
+        code: mk + code6,
+        name: s.name || '',
+        price: +s.trade || 0,
+        chg: +s.changepercent || 0,
+        pe: +s.per || 0,
+        pb: +s.pb || 0,
+        cap: Math.round((+s.mktcap || 0) / 10000),
+        turn: +s.turnoverratio || 0,
+        amount: +s.amount || 0,
+        sigs: [],
+        source: source
+      };
+    }).filter(Boolean);
+  }
+
+  // 东财排行榜 JSONP：获取候选股票池（备用）
   function emRankJSONP(sortField, pageSize, cbName) {
     var cb = cbName || '__emRank_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
     var url = 'https://push2.eastmoney.com/api/qt/clist/get?cb=' + cb +
@@ -500,41 +535,60 @@
         return { stocks: d.stocks, updatedAt: d.updatedAt, source: 'backend' };
       })
       .catch(function () {
-        // 降级：浏览器直连东财排行
+        // 降级：新浪全 A 股排行（CORS *，fetch 直连）
         MODE = 'live';
         return Promise.all([
-          emRankJSONP('f3', 15, '__emRankChg'),     // 涨幅排行
-          emRankJSONP('f62', 15, '__emRankFund')    // 主力资金排行
-        ]).then(function (results) {
-          var all = [];
-          var seen = {};
-          parseEmRank(results[0], '涨幅榜').forEach(function (s) {
-            if (!seen[s.code] && s.price) { seen[s.code] = 1; all.push(s); }
-          });
-          parseEmRank(results[1], '资金榜').forEach(function (s) {
-            if (!seen[s.code] && s.price) { seen[s.code] = 1; all.push(s); }
-          });
-
-          // 如果东财排行不可用，降级为刷新页面已有的快照池
-          if (!all.length && window.STOCKS && window.STOCKS.length) {
-            return refreshPoolStocks(window.STOCKS);
-          }
-          if (!all.length) throw new Error('无法获取候选股票数据，请稍后重试或本地启动 node server.js');
-
-          all = all.slice(0, 15);
-          var batch = [];
-          for (var i = 0; i < all.length; i += 5) {
-            batch.push(all.slice(i, i + 5));
-          }
-          return batch.reduce(function (p, group) {
-            return p.then(function () {
-              return Promise.all(group.map(enrichStock));
+          sinaRank('changepercent', 30),   // 涨幅榜
+          sinaRank('turnoverratio', 20),   // 换手率榜
+          sinaRank('amount', 20)           // 成交额榜
+        ]).then(function (lists) {
+          var all = [], seen = {};
+          var srcNames = ['涨幅榜', '换手率榜', '成交额榜'];
+          lists.forEach(function (list, idx) {
+            parseSinaRank(list, srcNames[idx]).forEach(function (s) {
+              if (!seen[s.code] && s.price > 0) { seen[s.code] = 1; all.push(s); }
             });
-          }, Promise.resolve()).then(function () {
-            return finalizeRadar(all);
           });
+
+          // 新浪排行不可用时，再降级为东财 JSONP
+          if (!all.length) {
+            return Promise.all([
+              emRankJSONP('f3', 20, '__emRankChg'),
+              emRankJSONP('f62', 20, '__emRankFund')
+            ]).then(function (results) {
+              parseEmRank(results[0], '涨幅榜').forEach(function (s) {
+                if (!seen[s.code] && s.price) { seen[s.code] = 1; all.push(s); }
+              });
+              parseEmRank(results[1], '资金榜').forEach(function (s) {
+                if (!seen[s.code] && s.price) { seen[s.code] = 1; all.push(s); }
+              });
+              if (!all.length && window.STOCKS && window.STOCKS.length) {
+                return refreshPoolStocks(window.STOCKS);
+              }
+              if (!all.length) throw new Error('无法获取候选股票数据，请稍后重试');
+              return enrichAndFinalize(all);
+            });
+          }
+
+          return enrichAndFinalize(all);
         });
       });
+  }
+
+  // 分批补充技术指标 + 排序生成简评
+  function enrichAndFinalize(all) {
+    all = all.slice(0, 30);
+    var batch = [];
+    for (var i = 0; i < all.length; i += 10) {
+      batch.push(all.slice(i, i + 10));
+    }
+    return batch.reduce(function (p, group) {
+      return p.then(function () {
+        return Promise.all(group.map(enrichStock));
+      });
+    }, Promise.resolve()).then(function () {
+      return finalizeRadar(all);
+    });
   }
 
   // 刷新已有快照池股票的实时数据
